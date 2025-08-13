@@ -1667,7 +1667,7 @@ module CancellableTaskTests =
                             return 55
                     }
 
-                let! result = loop 100_000
+                let! result = loop 1000_000
                 Expect.equal result 55 ""
             }
         ]
