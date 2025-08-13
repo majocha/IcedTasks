@@ -40,6 +40,33 @@ module TaskBase =
     and TaskBaseCode<'TOverall, 'T, 'Builder> =
         ResumableCode<TaskBaseStateMachineData<'TOverall, 'Builder>, 'T>
 
+    let inline yieldOnBindLimit (code: TaskBaseCode<_, _, _>) =
+        TaskBaseCode(fun sm ->
+            let mutable __stack_code_continue = true
+
+            if Trampoline.Current.CheckBindLimit() then
+                let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
+
+                if __stack_yield_fin then
+                    __stack_code_continue <- true
+                else
+                    let mutable __stack_awaiter = Trampoline.Current.Awaiter
+
+                    MethodBuilder.AwaitUnsafeOnCompleted(
+                        &sm.Data.MethodBuilder,
+                        &__stack_awaiter,
+                        &sm
+                    )
+
+                    __stack_code_continue <- false
+
+            if __stack_code_continue then
+                let __stack_code_fin = code.Invoke(&sm)
+                __stack_code_fin
+            else
+                false
+        )
+
     /// <summary>
     /// Contains methods to build TaskLikes using the F# computation expression syntax
     /// </summary>
@@ -176,7 +203,13 @@ module TaskBase =
 
             let cont =
                 TaskBaseResumptionFunc<'TOverall, 'Builder>(fun sm ->
-                    let result = Awaiter.GetResult awaiter
+
+                    let result =
+                        try
+                            Awaiter.GetResult awaiter
+                        with exn ->
+                            ExceptionCache.Throw exn
+
                     (continuation result).Invoke(&sm)
                 )
 
@@ -222,7 +255,11 @@ module TaskBase =
                         __stack_fin <- __stack_yield_fin
 
                     if __stack_fin then
-                        let result = Awaiter.GetResult awaiter
+                        let result =
+                            try
+                                Awaiter.GetResult awaiter
+                            with exn ->
+                                ExceptionCache.Throw exn
 
                         (continuation result).Invoke(&sm)
                     else

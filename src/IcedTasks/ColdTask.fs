@@ -50,6 +50,33 @@ module ColdTasks =
     /// A special compiler-recognised delegate type for specifying blocks of ColdTask code with access to the state machine
     and ColdTaskCode<'TOverall, 'T> = ResumableCode<ColdTaskStateMachineData<'TOverall>, 'T>
 
+    let inline yieldOnBindLimit (code: ColdTaskCode<_, _>) =
+        ColdTaskCode(fun sm ->
+            let mutable __stack_code_continue = true
+
+            if Trampoline.Current.CheckBindLimit() then
+                let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
+
+                if __stack_yield_fin then
+                    __stack_code_continue <- true
+                else
+                    let mutable __stack_awaiter = Trampoline.Current.Awaiter
+
+                    MethodBuilder.AwaitUnsafeOnCompleted(
+                        &sm.Data.MethodBuilder,
+                        &__stack_awaiter,
+                        &sm
+                    )
+
+                    __stack_code_continue <- false
+
+            if __stack_code_continue then
+                let __stack_code_fin = code.Invoke(&sm)
+                __stack_code_fin
+            else
+                false
+        )
+
     /// Contains the coldTask computation expression builder.
     type ColdTaskBuilderBase() =
 
@@ -118,7 +145,7 @@ module ColdTasks =
         ///
         /// <returns>An ColdTask that behaves similarly to a while loop when run.</returns>
         member inline _.While
-            (guard: unit -> bool, body: ColdTaskCode<'TOverall, unit>)
+            ([<InlineIfLambda>] guard: unit -> bool, body: ColdTaskCode<'TOverall, unit>)
             : ColdTaskCode<'TOverall, unit> =
             ResumableCode.While(guard, body)
 
@@ -157,7 +184,7 @@ module ColdTasks =
         /// <returns>An ColdTask that executes computation and compensation afterwards or
         /// when an exception is raised.</returns>
         member inline _.TryFinally
-            (body: ColdTaskCode<'TOverall, 'T>, compensation: unit -> unit)
+            (body: ColdTaskCode<'TOverall, 'T>, [<InlineIfLambda>] compensation: unit -> unit)
             : ColdTaskCode<'TOverall, 'T> =
             ResumableCode.TryFinally(
                 body,
@@ -202,7 +229,7 @@ module ColdTasks =
         /// <returns>An ColdTask that executes computation and compensation afterwards or
         /// when an exception is raised.</returns>
         member inline internal this.TryFinallyAsync
-            (body: ColdTaskCode<'TOverall, 'T>, compensation: unit -> ValueTask)
+            (body: ColdTaskCode<'TOverall, 'T>, [<InlineIfLambda>] compensation: unit -> ValueTask)
             : ColdTaskCode<'TOverall, 'T> =
             ResumableCode.TryFinallyAsync(
                 body,
@@ -342,7 +369,7 @@ module ColdTasks =
                         let mutable __stack_exn = null
 
                         try
-                            let __stack_code_fin = code.Invoke(&sm)
+                            let __stack_code_fin = (yieldOnBindLimit code).Invoke(&sm)
 
                             if __stack_code_fin then
                                 sm.Data.MethodBuilder.SetResult(sm.Data.Result)
@@ -400,7 +427,7 @@ module ColdTasks =
                         __resumeAt sm.ResumptionPoint
 
                         try
-                            let __stack_code_fin = code.Invoke(&sm)
+                            let __stack_code_fin = (yieldOnBindLimit code).Invoke(&sm)
 
                             if __stack_code_fin then
                                 sm.Data.MethodBuilder.SetResult(sm.Data.Result)
@@ -556,7 +583,7 @@ module ColdTasks =
             [<NoEagerConstraintApplication>]
             member inline this.BindReturn<'TResult1, 'TResult2, 'Awaiter, 'TOverall
                 when Awaiter<'Awaiter, 'TResult1>>
-                (getAwaiter: unit -> 'Awaiter, f)
+                (getAwaiter: unit -> 'Awaiter, [<InlineIfLambda>] f)
                 : ColdTaskCode<'TResult2, 'TResult2> =
                 this.Bind((fun () -> getAwaiter ()), (fun v -> this.Return(f v)))
 

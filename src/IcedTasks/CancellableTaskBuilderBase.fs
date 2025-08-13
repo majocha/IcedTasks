@@ -48,6 +48,33 @@ module CancellableTaskBase =
     and CancellableTaskBaseCode<'TOverall, 'T, 'Builder> =
         ResumableCode<CancellableTaskBaseStateMachineData<'TOverall, 'Builder>, 'T>
 
+    let inline yieldOnBindLimit (code: CancellableTaskBaseCode<_, _, _>) =
+        CancellableTaskBaseCode(fun sm ->
+            let mutable __stack_code_continue = true
+
+            if Trampoline.Current.CheckBindLimit() then
+                let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
+
+                if __stack_yield_fin then
+                    __stack_code_continue <- true
+                else
+                    let mutable __stack_awaiter = Trampoline.Current.Awaiter
+
+                    MethodBuilder.AwaitUnsafeOnCompleted(
+                        &sm.Data.MethodBuilder,
+                        &__stack_awaiter,
+                        &sm
+                    )
+
+                    __stack_code_continue <- false
+
+            if __stack_code_continue then
+                let __stack_code_fin = code.Invoke(&sm)
+                __stack_code_fin
+            else
+                false
+        )
+
     /// <summary>
     /// Contains methods to build TaskLikes using the F# computation expression syntax
     /// </summary>
@@ -312,7 +339,7 @@ module CancellableTaskBase =
             member inline this.BindReturn
                 (
                     [<InlineIfLambda>] getAwaiter: CancellationToken -> 'Awaiter,
-                    mapper: 'TResult1 -> 'TResult2
+                    [<InlineIfLambda>] mapper: 'TResult1 -> 'TResult2
                 ) : CancellableTaskBaseCode<_, _, _> =
                 this.Bind((fun ct -> getAwaiter ct), (fun v -> this.Return(mapper v)))
 
@@ -766,7 +793,7 @@ module CancellableTaskBase =
             member inline internal x.TryFinallyAsync
                 (
                     computation: CancellableTaskBaseCode<'TOverall, 'T, 'Builder>,
-                    compensation: unit -> 'Awaitable
+                    [<InlineIfLambda>] compensation: unit -> 'Awaitable
                 ) : CancellableTaskBaseCode<'TOverall, 'T, 'Builder> =
                 ResumableCode.TryFinallyAsync(
                     computation,

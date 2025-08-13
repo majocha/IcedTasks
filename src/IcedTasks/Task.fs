@@ -101,7 +101,7 @@ module Tasks =
                         let mutable __stack_exn = null
 
                         try
-                            let __stack_code_fin = code.Invoke(&sm)
+                            let __stack_code_fin = (yieldOnBindLimit code).Invoke(&sm)
 
                             if __stack_code_fin then
                                 MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
@@ -171,7 +171,7 @@ module Tasks =
                         let mutable __stack_exn = null
 
                         try
-                            let __stack_code_fin = code.Invoke(&sm)
+                            let __stack_code_fin = (yieldOnBindLimit code).Invoke(&sm)
 
                             if __stack_code_fin then
                                 MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
