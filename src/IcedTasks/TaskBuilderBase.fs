@@ -200,11 +200,7 @@ module TaskBase =
             let cont =
                 TaskBaseResumptionFunc<'TOverall, 'Builder>(fun sm ->
 
-                    let result =
-                        try
-                            Awaiter.GetResult awaiter
-                        with exn ->
-                            ExceptionCache.Throw exn
+                    let result = ExceptionCache.GetResultOrThrow awaiter
 
                     (continuation result).Invoke(&sm)
                 )
