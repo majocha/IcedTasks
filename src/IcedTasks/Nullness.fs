@@ -1,12 +1,13 @@
 namespace IcedTasks
 
 open System
+open System.Runtime.ExceptionServices
 
-type ExceptionNull =
+type ExceptionDispatchInfoNull =
 #if NULLABLE
-    Exception | null
+    ExceptionDispatchInfo | null
 #else
-    Exception
+    ExceptionDispatchInfo
 #endif
 
 type IDisposableNull =

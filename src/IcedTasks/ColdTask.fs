@@ -36,6 +36,12 @@ module ColdTasks =
         val mutable Result: 'T
 
         [<DefaultValue(false)>]
+        val mutable Error: ExceptionDispatchInfoNull
+
+        [<DefaultValue(false)>]
+        val mutable Finished: bool
+
+        [<DefaultValue(false)>]
         val mutable MethodBuilder: AsyncTaskMethodBuilder<'T>
 
     /// This is used by the compiler as a template for creating state machine structs
@@ -50,31 +56,21 @@ module ColdTasks =
     /// A special compiler-recognised delegate type for specifying blocks of ColdTask code with access to the state machine
     and ColdTaskCode<'TOverall, 'T> = ResumableCode<ColdTaskStateMachineData<'TOverall>, 'T>
 
-    let inline yieldOnBindLimit (code: ColdTaskCode<_, _>) =
+    let inline yieldOnBindLimit () =
         ColdTaskCode(fun sm ->
-            let mutable __stack_code_continue = true
-
-            if Trampoline.Current.CheckBindLimit() then
+            if BindDepthCounter.Check() then
                 let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
 
-                if __stack_yield_fin then
-                    __stack_code_continue <- true
-                else
-                    let mutable __stack_awaiter = Trampoline.Current.Awaiter
-
+                if not __stack_yield_fin then
                     MethodBuilder.AwaitUnsafeOnCompleted(
                         &sm.Data.MethodBuilder,
-                        &__stack_awaiter,
+                        Trampoline.Current.AwaiterRef,
                         &sm
                     )
 
-                    __stack_code_continue <- false
-
-            if __stack_code_continue then
-                let __stack_code_fin = code.Invoke(&sm)
-                __stack_code_fin
+                __stack_yield_fin
             else
-                false
+                true
         )
 
     /// Contains the coldTask computation expression builder.
@@ -364,22 +360,29 @@ module ColdTasks =
             if __useResumableCode then
                 __stateMachine<ColdTaskStateMachineData<'T>, ColdTask<'T>>
                     (MoveNextMethodImpl<_>(fun sm ->
-                        //-- RESUMABLE CODE START
                         __resumeAt sm.ResumptionPoint
-                        let mutable __stack_exn = null
 
                         try
-                            let __stack_code_fin = (yieldOnBindLimit code).Invoke(&sm)
+                            let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_code_fin then
-                                sm.Data.MethodBuilder.SetResult(sm.Data.Result)
+                            if __stack_go1 then
+                                let __stack_code_fin = code.Invoke(&sm)
+                                sm.Data.Finished <- __stack_code_fin
                         with exn ->
-                            __stack_exn <- exn
-                        // Run SetException outside the stack unwind, see https://github.com/dotnet/roslyn/issues/26567
-                        match __stack_exn with
-                        | null -> ()
-                        | exn -> sm.Data.MethodBuilder.SetException exn
-                    //-- RESUMABLE CODE END
+                            sm.Data.Finished <- true
+                            sm.Data.Error <- ExceptionCache.CaptureOrRetrieve exn
+
+                        if sm.Data.Finished then
+                            let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+
+                            if __stack_go2 then
+                                if isNull sm.Data.Error then
+                                    MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
+                                else
+                                    MethodBuilder.SetException(
+                                        &sm.Data.MethodBuilder,
+                                        sm.Data.Error.SourceException
+                                    )
                     ))
                     (SetStateMachineMethodImpl<_>(fun sm state ->
                         sm.Data.MethodBuilder.SetStateMachine(state)
@@ -423,17 +426,29 @@ module ColdTasks =
             if __useResumableCode then
                 __stateMachine<ColdTaskStateMachineData<'T>, ColdTask<'T>>
                     (MoveNextMethodImpl<_>(fun sm ->
-                        //-- RESUMABLE CODE START
                         __resumeAt sm.ResumptionPoint
 
                         try
-                            let __stack_code_fin = (yieldOnBindLimit code).Invoke(&sm)
+                            let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_code_fin then
-                                sm.Data.MethodBuilder.SetResult(sm.Data.Result)
+                            if __stack_go1 then
+                                let __stack_code_fin = code.Invoke(&sm)
+                                sm.Data.Finished <- __stack_code_fin
                         with exn ->
-                            sm.Data.MethodBuilder.SetException exn
-                    //-- RESUMABLE CODE END
+                            sm.Data.Finished <- true
+                            sm.Data.Error <- ExceptionCache.CaptureOrRetrieve exn
+
+                        if sm.Data.Finished then
+                            let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+
+                            if __stack_go2 then
+                                if isNull sm.Data.Error then
+                                    MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
+                                else
+                                    MethodBuilder.SetException(
+                                        &sm.Data.MethodBuilder,
+                                        sm.Data.Error.SourceException
+                                    )
                     ))
                     (SetStateMachineMethodImpl<_>(fun sm state ->
                         sm.Data.MethodBuilder.SetStateMachine(state)
@@ -551,7 +566,7 @@ module ColdTasks =
                             __stack_fin <- __stack_yield_fin
 
                         if __stack_fin then
-                            let result = Awaiter.GetResult awaiter
+                            let result = ExceptionCache.GetResultOrThrow awaiter
                             (continuation result).Invoke(&sm)
                         else
                             sm.Data.MethodBuilder.AwaitUnsafeOnCompleted(&awaiter, &sm)

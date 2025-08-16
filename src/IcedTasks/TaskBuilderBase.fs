@@ -22,6 +22,12 @@ module TaskBase =
         val mutable Result: 'T
 
         [<DefaultValue(false)>]
+        val mutable Error: ExceptionDispatchInfoNull
+
+        [<DefaultValue(false)>]
+        val mutable Finished: bool
+
+        [<DefaultValue(false)>]
         val mutable MethodBuilder: 'Builder
 
     /// This is used by the compiler as a template for creating state machine structs
@@ -40,31 +46,21 @@ module TaskBase =
     and TaskBaseCode<'TOverall, 'T, 'Builder> =
         ResumableCode<TaskBaseStateMachineData<'TOverall, 'Builder>, 'T>
 
-    let inline yieldOnBindLimit (code: TaskBaseCode<_, _, _>) =
+    let inline yieldOnBindLimit () =
         TaskBaseCode(fun sm ->
-            let mutable __stack_code_continue = true
-
-            if Trampoline.Current.CheckBindLimit() then
+            if BindDepthCounter.Check() then
                 let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
 
-                if __stack_yield_fin then
-                    __stack_code_continue <- true
-                else
-                    let mutable __stack_awaiter = Trampoline.Current.Awaiter
-
+                if not __stack_yield_fin then
                     MethodBuilder.AwaitUnsafeOnCompleted(
                         &sm.Data.MethodBuilder,
-                        &__stack_awaiter,
+                        Trampoline.Current.AwaiterRef,
                         &sm
                     )
 
-                    __stack_code_continue <- false
-
-            if __stack_code_continue then
-                let __stack_code_fin = code.Invoke(&sm)
-                __stack_code_fin
+                __stack_yield_fin
             else
-                false
+                true
         )
 
     /// <summary>
@@ -255,12 +251,7 @@ module TaskBase =
                         __stack_fin <- __stack_yield_fin
 
                     if __stack_fin then
-                        let result =
-                            try
-                                Awaiter.GetResult awaiter
-                            with exn ->
-                                ExceptionCache.Throw exn
-
+                        let result = ExceptionCache.GetResultOrThrow awaiter
                         (continuation result).Invoke(&sm)
                     else
 

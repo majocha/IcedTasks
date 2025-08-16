@@ -9,11 +9,6 @@ type Trampoline private () =
 
     let ownerThreadId = Thread.CurrentThread.ManagedThreadId
 
-    let mutable bindCount = 0
-
-    [<Literal>]
-    let bindLimit = 100
-
     let mutable next: ValueOption<Action> = ValueNone
     let mutable executing = false
 
@@ -27,50 +22,69 @@ type Trampoline private () =
             executing <- false
 
     let start action =
-        assert next.IsNone
-
         next <- ValueSome action
         executing <- true
         loop ()
 
     let set action =
         assert (Thread.CurrentThread.ManagedThreadId = ownerThreadId)
-
-        bindCount <- 0
+        assert next.IsNone
         if executing then next <- ValueSome action else start action
 
-    static let current = new ThreadLocal<Trampoline>(fun () -> Trampoline())
+    static let holder = new ThreadLocal<Trampoline>(fun () -> Trampoline())
 
-    static member Current = current.Value
+    interface ICriticalNotifyCompletion with
+        member this.OnCompleted(continuation: Action) = set continuation
+        member this.UnsafeOnCompleted(continuation: Action) = set continuation
 
-    member _.CheckBindLimit() =
-        bindCount <-
-            bindCount
+    member this.AwaiterRef = ref (this :> ICriticalNotifyCompletion)
+    member this.Awaiter = (this :> ICriticalNotifyCompletion)
+
+    static member Current = holder.Value
+
+module BindDepthCounter =
+    [<Literal>]
+    let bindLimit = 50
+
+    let counter = new ThreadLocal<int>()
+
+    let inline Check () =
+        counter.Value <-
+            counter.Value
             + 1
 
-        bindCount
-        >= bindLimit
-
-    member val Awaiter =
-        { new ICriticalNotifyCompletion with
-            member this.OnCompleted(continuation: Action) = set continuation
-            member this.UnsafeOnCompleted(continuation: Action) = set continuation
-        }
+        if
+            counter.Value
+            >= bindLimit
+        then
+            counter.Value <- 0
+            true
+        else
+            false
 
 module ExceptionCache =
-    let private store = ConditionalWeakTable<exn, ExceptionDispatchInfo>()
+    let store = ConditionalWeakTable<exn, ExceptionDispatchInfo>()
 
-    let Throw (exn: exn) =
+    let inline CaptureOrRetrieve (exn: exn) =
         match store.TryGetValue exn with
-        | true, edi when edi.SourceException = exn -> edi.Throw()
+        | true, edi when edi.SourceException = exn -> edi
         | _ ->
             let edi = ExceptionDispatchInfo.Capture exn
 
             try
                 store.Add(exn, edi)
             with _ ->
-                () //
+                ()
 
-            edi.Throw()
+            edi
 
+    let inline Throw (exn: exn) =
+        let edi = CaptureOrRetrieve exn
+        edi.Throw()
         Unchecked.defaultof<_>
+
+    let inline GetResultOrThrow awaiter =
+        try
+            Awaiter.GetResult awaiter
+        with exn ->
+            Throw exn

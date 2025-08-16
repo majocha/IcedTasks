@@ -92,22 +92,29 @@ module PoolingValueTasks =
             if __useResumableCode then
                 __stateMachine<TaskBaseStateMachineData<'T, _>, ValueTask<'T>>
                     (MoveNextMethodImpl<_>(fun sm ->
-                        //-- RESUMABLE CODE START
                         __resumeAt sm.ResumptionPoint
-                        let mutable __stack_exn = null
 
                         try
-                            let __stack_code_fin = (yieldOnBindLimit code).Invoke(&sm)
+                            let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_code_fin then
-                                MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
+                            if __stack_go1 then
+                                let __stack_code_fin = code.Invoke(&sm)
+                                sm.Data.Finished <- __stack_code_fin
                         with exn ->
-                            __stack_exn <- exn
-                        // Run SetException outside the stack unwind, see https://github.com/dotnet/roslyn/issues/26567
-                        match __stack_exn with
-                        | null -> ()
-                        | exn -> MethodBuilder.SetException(&sm.Data.MethodBuilder, exn)
-                    //-- RESUMABLE CODE END
+                            sm.Data.Finished <- true
+                            sm.Data.Error <- ExceptionCache.CaptureOrRetrieve exn
+
+                        if sm.Data.Finished then
+                            let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+
+                            if __stack_go2 then
+                                if isNull sm.Data.Error then
+                                    MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
+                                else
+                                    MethodBuilder.SetException(
+                                        &sm.Data.MethodBuilder,
+                                        sm.Data.Error.SourceException
+                                    )
                     ))
                     (SetStateMachineMethodImpl<_>(fun sm state ->
                         MethodBuilder.SetStateMachine(&sm.Data.MethodBuilder, state)

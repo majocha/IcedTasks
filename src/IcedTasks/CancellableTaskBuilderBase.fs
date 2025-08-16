@@ -5,6 +5,7 @@ namespace IcedTasks
 module CancellableTaskBase =
     open System
     open System.Runtime.CompilerServices
+    open System.Runtime.ExceptionServices
     open System.Threading
     open System.Threading.Tasks
     open Microsoft.FSharp.Core
@@ -22,6 +23,12 @@ module CancellableTaskBase =
 
         [<DefaultValue(false)>]
         val mutable Result: 'T
+
+        [<DefaultValue(false)>]
+        val mutable Error: ExceptionDispatchInfoNull
+
+        [<DefaultValue(false)>]
+        val mutable Finished: bool
 
         [<DefaultValue(false)>]
         val mutable MethodBuilder: 'Builder
@@ -48,31 +55,21 @@ module CancellableTaskBase =
     and CancellableTaskBaseCode<'TOverall, 'T, 'Builder> =
         ResumableCode<CancellableTaskBaseStateMachineData<'TOverall, 'Builder>, 'T>
 
-    let inline yieldOnBindLimit (code: CancellableTaskBaseCode<_, _, _>) =
+    let inline yieldOnBindLimit () =
         CancellableTaskBaseCode(fun sm ->
-            let mutable __stack_code_continue = true
-
-            if Trampoline.Current.CheckBindLimit() then
+            if BindDepthCounter.Check() then
                 let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
 
-                if __stack_yield_fin then
-                    __stack_code_continue <- true
-                else
-                    let mutable __stack_awaiter = Trampoline.Current.Awaiter
-
+                if not __stack_yield_fin then
                     MethodBuilder.AwaitUnsafeOnCompleted(
                         &sm.Data.MethodBuilder,
-                        &__stack_awaiter,
+                        Trampoline.Current.AwaiterRef,
                         &sm
                     )
 
-                    __stack_code_continue <- false
-
-            if __stack_code_continue then
-                let __stack_code_fin = code.Invoke(&sm)
-                __stack_code_fin
+                __stack_yield_fin
             else
-                false
+                true
         )
 
     /// <summary>
@@ -299,7 +296,7 @@ module CancellableTaskBase =
                             __stack_fin <- __stack_yield_fin
 
                         if __stack_fin then
-                            let result = Awaiter.GetResult awaiter
+                            let result = ExceptionCache.GetResultOrThrow awaiter
                             (continuation result).Invoke(&sm)
                         else
                             let mutable awaiter = awaiter :> ICriticalNotifyCompletion
@@ -534,7 +531,7 @@ module CancellableTaskBase =
                             __stack_fin <- __stack_yield_fin
 
                         if __stack_fin then
-                            let result = Awaiter.GetResult awaiter
+                            let result = ExceptionCache.GetResultOrThrow awaiter
                             (continuation result).Invoke(&sm)
                         else
                             let mutable awaiter = awaiter :> ICriticalNotifyCompletion
