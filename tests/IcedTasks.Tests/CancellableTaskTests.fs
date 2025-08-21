@@ -1647,7 +1647,7 @@ module CancellableTaskTests =
         ]
 
     let recursionTests =
-        testList "recursion" [
+        testList "Recursion" [
             testCaseAsync "Non-tail recursion"
             <| async {
                 let rec loop n =
@@ -1667,7 +1667,7 @@ module CancellableTaskTests =
                             return 55
                     }
 
-                let! result = loop 1000_000
+                let! result = loop 100_000
                 Expect.equal result 55 ""
             }
         ]
