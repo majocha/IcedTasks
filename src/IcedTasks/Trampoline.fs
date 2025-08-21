@@ -43,6 +43,8 @@ type Trampoline private () =
         member _.OnCompleted(continuation: Action) = set continuation
         member _.UnsafeOnCompleted(continuation: Action) = set continuation
 
+    member this.AwaiterRef: ICriticalNotifyCompletion ref = ref this
+
     static member Current = holder.Value
 
 module BindDepthCounter =
@@ -91,3 +93,10 @@ module ExceptionCache =
             Awaiter.GetResult awaiter
         with exn ->
             Throw exn
+
+[<Struct>]
+type DynamicState =
+    | InitialYield
+    | Running
+    | SetResult
+    | SetException of ExceptionDispatchInfo

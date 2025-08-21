@@ -50,42 +50,71 @@ module ValueTasksUnit =
             let initialResumptionFunc =
                 TaskBaseResumptionFunc<'T, _>(fun sm -> code.Invoke(&sm))
 
-            let resumptionInfo =
+            let resumptionInfo () =
+                let mutable state = InitialYield
+
                 { new TaskBaseResumptionDynamicInfo<'T, _>(initialResumptionFunc) with
                     member info.MoveNext(sm) =
-                        let mutable savedExn = null
+                        let current = state
 
-                        try
-                            sm.ResumptionDynamicInfo.ResumptionData <- null
-                            let step = info.ResumptionFunc.Invoke(&sm)
+                        match current with
+                        | InitialYield ->
+                            state <- Running
 
-                            if step then
-                                MethodBuilder.SetResult(&sm.Data.MethodBuilder)
+                            if BindDepthCounter.Check() then
+                                MethodBuilder.AwaitUnsafeOnCompleted(
+                                    &sm.Data.MethodBuilder,
+                                    Trampoline.Current.AwaiterRef,
+                                    &sm
+                                )
                             else
-                                match sm.ResumptionDynamicInfo.ResumptionData with
-                                | :? ICriticalNotifyCompletion as awaiter ->
-                                    let mutable awaiter = awaiter
-                                    // assert not (isNull awaiter)
-                                    MethodBuilder.AwaitOnCompleted(
+                                info.MoveNext(&sm)
+                        | Running ->
+                            try
+                                let step = info.ResumptionFunc.Invoke(&sm)
+
+                                if step then
+                                    state <- SetResult
+
+                                    if BindDepthCounter.Check() then
+                                        MethodBuilder.AwaitUnsafeOnCompleted(
+                                            &sm.Data.MethodBuilder,
+                                            Trampoline.Current.AwaiterRef,
+                                            &sm
+                                        )
+                                    else
+                                        info.MoveNext(&sm)
+                                else
+                                    match sm.ResumptionDynamicInfo.ResumptionData with
+                                    | :? ICriticalNotifyCompletion as awaiter ->
+                                        let mutable awaiter = awaiter
+
+                                        MethodBuilder.AwaitUnsafeOnCompleted(
+                                            &sm.Data.MethodBuilder,
+                                            &awaiter,
+                                            &sm
+                                        )
+                                    | _ -> ()
+                            with exn ->
+                                state <- SetException(ExceptionCache.CaptureOrRetrieve exn)
+
+                                if BindDepthCounter.Check() then
+                                    MethodBuilder.AwaitUnsafeOnCompleted(
                                         &sm.Data.MethodBuilder,
-                                        &awaiter,
+                                        Trampoline.Current.AwaiterRef,
                                         &sm
                                     )
-                                | awaiter -> assert not (isNull awaiter)
-
-                        with exn ->
-                            savedExn <- exn
-                        // Run SetException outside the stack unwind, see https://github.com/dotnet/roslyn/issues/26567
-                        match savedExn with
-                        | null -> ()
-                        | exn -> MethodBuilder.SetException(&sm.Data.MethodBuilder, exn)
+                                else
+                                    info.MoveNext(&sm)
+                        | SetResult -> MethodBuilder.SetResult(&sm.Data.MethodBuilder)
+                        | SetException edi ->
+                            MethodBuilder.SetException(&sm.Data.MethodBuilder, edi.SourceException)
 
                     member _.SetStateMachine(sm, state) =
-
                         MethodBuilder.SetStateMachine(&sm.Data.MethodBuilder, state)
                 }
 
-            sm.ResumptionDynamicInfo <- resumptionInfo
+            sm.ResumptionDynamicInfo <- resumptionInfo ()
             sm.Data.MethodBuilder <- AsyncValueTaskMethodBuilder.Create()
             MethodBuilder.Start(&sm.Data.MethodBuilder, &sm)
             MethodBuilder.get_Task (&sm.Data.MethodBuilder)
