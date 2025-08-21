@@ -25,12 +25,6 @@ module CancellableTaskBase =
         val mutable Result: 'T
 
         [<DefaultValue(false)>]
-        val mutable Error: ExceptionDispatchInfoNull
-
-        [<DefaultValue(false)>]
-        val mutable Finished: bool
-
-        [<DefaultValue(false)>]
         val mutable MethodBuilder: 'Builder
 
         /// <summary>Throws a <see cref="T:System.OperationCanceledException" /> if this token has had cancellation requested.</summary>
@@ -61,9 +55,11 @@ module CancellableTaskBase =
                 let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
 
                 if not __stack_yield_fin then
+                    let mutable __stack_awaiter = Trampoline.Current
+
                     MethodBuilder.AwaitUnsafeOnCompleted(
                         &sm.Data.MethodBuilder,
-                        Trampoline.Current.AwaiterRef,
+                        &__stack_awaiter,
                         &sm
                     )
 

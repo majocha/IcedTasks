@@ -5,6 +5,12 @@ open System.Runtime.ExceptionServices
 open System.Threading
 open System.Runtime.CompilerServices
 
+[<AutoOpen>]
+module Assert =
+    let failIfNot condition msg =
+        if not condition then
+            failwith $" assertion failed {msg}"
+
 type Trampoline private () =
 
     let ownerThreadId = Thread.CurrentThread.ManagedThreadId
@@ -27,24 +33,21 @@ type Trampoline private () =
         loop ()
 
     let set action =
-        assert (Thread.CurrentThread.ManagedThreadId = ownerThreadId)
-        assert next.IsNone
+        failIfNot (Thread.CurrentThread.ManagedThreadId = ownerThreadId) "thread"
+        failIfNot next.IsNone "next is not None"
         if executing then next <- ValueSome action else start action
 
     static let holder = new ThreadLocal<Trampoline>(fun () -> Trampoline())
 
     interface ICriticalNotifyCompletion with
-        member this.OnCompleted(continuation: Action) = set continuation
-        member this.UnsafeOnCompleted(continuation: Action) = set continuation
-
-    member this.AwaiterRef = ref (this :> ICriticalNotifyCompletion)
-    member this.Awaiter = (this :> ICriticalNotifyCompletion)
+        member _.OnCompleted(continuation: Action) = set continuation
+        member _.UnsafeOnCompleted(continuation: Action) = set continuation
 
     static member Current = holder.Value
 
 module BindDepthCounter =
     [<Literal>]
-    let bindLimit = 50
+    let bindLimit = 10
 
     let counter = new ThreadLocal<int>()
 

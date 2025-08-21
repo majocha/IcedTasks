@@ -36,12 +36,6 @@ module ColdTasks =
         val mutable Result: 'T
 
         [<DefaultValue(false)>]
-        val mutable Error: ExceptionDispatchInfoNull
-
-        [<DefaultValue(false)>]
-        val mutable Finished: bool
-
-        [<DefaultValue(false)>]
         val mutable MethodBuilder: AsyncTaskMethodBuilder<'T>
 
     /// This is used by the compiler as a template for creating state machine structs
@@ -62,9 +56,11 @@ module ColdTasks =
                 let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
 
                 if not __stack_yield_fin then
+                    let mutable __stack_awaiter = Trampoline.Current
+
                     MethodBuilder.AwaitUnsafeOnCompleted(
                         &sm.Data.MethodBuilder,
-                        Trampoline.Current.AwaiterRef,
+                        &__stack_awaiter,
                         &sm
                     )
 
@@ -313,7 +309,6 @@ module ColdTasks =
         /// </summary>
         static member inline RunDynamic(code: ColdTaskCode<'T, 'T>) : ColdTask<'T> =
 
-            let mutable sm = ColdTaskStateMachine<'T>()
             let initialResumptionFunc = ColdTaskResumptionFunc<'T>(fun sm -> code.Invoke(&sm))
 
             let resumptionInfo =
@@ -350,6 +345,8 @@ module ColdTasks =
                 }
 
             fun () ->
+                let mutable sm = ColdTaskStateMachine<'T>()
+
                 sm.ResumptionDynamicInfo <- resumptionInfo
                 sm.Data.MethodBuilder <- AsyncTaskMethodBuilder<'T>.Create()
                 sm.Data.MethodBuilder.Start(&sm)
@@ -361,27 +358,34 @@ module ColdTasks =
                 __stateMachine<ColdTaskStateMachineData<'T>, ColdTask<'T>>
                     (MoveNextMethodImpl<_>(fun sm ->
                         __resumeAt sm.ResumptionPoint
+                        let mutable error = ValueNone
 
-                        try
-                            let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
+                        let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go1 then
+                        if __stack_go1 then
+                            try
                                 let __stack_code_fin = code.Invoke(&sm)
-                                sm.Data.Finished <- __stack_code_fin
-                        with exn ->
-                            sm.Data.Finished <- true
-                            sm.Data.Error <- ExceptionCache.CaptureOrRetrieve exn
 
-                        if sm.Data.Finished then
-                            let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                if __stack_code_fin then
+                                    let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go2 then
-                                if isNull sm.Data.Error then
-                                    MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
-                                else
+                                    if __stack_go2 then
+                                        MethodBuilder.SetResult(
+                                            &sm.Data.MethodBuilder,
+                                            sm.Data.Result
+                                        )
+                            with exn ->
+                                error <-
+                                    ValueSome
+                                    <| ExceptionCache.CaptureOrRetrieve exn
+
+                            if error.IsSome then
+                                let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+
+                                if __stack_go2 then
                                     MethodBuilder.SetException(
                                         &sm.Data.MethodBuilder,
-                                        sm.Data.Error.SourceException
+                                        error.Value.SourceException
                                     )
                     ))
                     (SetStateMachineMethodImpl<_>(fun sm state ->
@@ -427,47 +431,55 @@ module ColdTasks =
                 __stateMachine<ColdTaskStateMachineData<'T>, ColdTask<'T>>
                     (MoveNextMethodImpl<_>(fun sm ->
                         __resumeAt sm.ResumptionPoint
+                        let mutable error = ValueNone
 
-                        try
-                            let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
+                        let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go1 then
+                        if __stack_go1 then
+                            try
                                 let __stack_code_fin = code.Invoke(&sm)
-                                sm.Data.Finished <- __stack_code_fin
-                        with exn ->
-                            sm.Data.Finished <- true
-                            sm.Data.Error <- ExceptionCache.CaptureOrRetrieve exn
 
-                        if sm.Data.Finished then
-                            let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                if __stack_code_fin then
+                                    let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go2 then
-                                if isNull sm.Data.Error then
-                                    MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
-                                else
+                                    if __stack_go2 then
+                                        MethodBuilder.SetResult(
+                                            &sm.Data.MethodBuilder,
+                                            sm.Data.Result
+                                        )
+                            with exn ->
+                                error <-
+                                    ValueSome
+                                    <| ExceptionCache.CaptureOrRetrieve exn
+
+                            if error.IsSome then
+                                let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+
+                                if __stack_go2 then
                                     MethodBuilder.SetException(
                                         &sm.Data.MethodBuilder,
-                                        sm.Data.Error.SourceException
+                                        error.Value.SourceException
                                     )
                     ))
                     (SetStateMachineMethodImpl<_>(fun sm state ->
                         sm.Data.MethodBuilder.SetStateMachine(state)
                     ))
                     (AfterCode<_, ColdTask<'T>>(fun sm ->
+                        let sm = sm
+
                         // backgroundTask { .. } escapes to a background thread where necessary
                         // See spec of ConfigureAwait(false) at https://devblogs.microsoft.com/dotnet/configureawait-faq/
                         if
                             isNull SynchronizationContext.Current
                             && obj.ReferenceEquals(TaskScheduler.Current, TaskScheduler.Default)
                         then
-                            let mutable sm = sm
 
                             fun () ->
+                                let mutable sm = sm
                                 sm.Data.MethodBuilder <- AsyncTaskMethodBuilder<'T>.Create()
                                 sm.Data.MethodBuilder.Start(&sm)
                                 sm.Data.MethodBuilder.Task
                         else
-                            let sm = sm // copy
 
                             fun () ->
                                 Task.Run<'T>(fun () ->

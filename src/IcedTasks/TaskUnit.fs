@@ -94,27 +94,31 @@ module TasksUnit =
                 __stateMachine<TaskBaseStateMachineData<'T, _>, _>
                     (MoveNextMethodImpl<_>(fun sm ->
                         __resumeAt sm.ResumptionPoint
+                        let mutable error = ValueNone
 
-                        try
-                            let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
+                        let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go1 then
+                        if __stack_go1 then
+                            try
                                 let __stack_code_fin = code.Invoke(&sm)
-                                sm.Data.Finished <- __stack_code_fin
-                        with exn ->
-                            sm.Data.Finished <- true
-                            sm.Data.Error <- ExceptionCache.CaptureOrRetrieve exn
 
-                        if sm.Data.Finished then
-                            let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                if __stack_code_fin then
+                                    let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go2 then
-                                if isNull sm.Data.Error then
-                                    MethodBuilder.SetResult(&sm.Data.MethodBuilder)
-                                else
+                                    if __stack_go2 then
+                                        MethodBuilder.SetResult(&sm.Data.MethodBuilder)
+                            with exn ->
+                                error <-
+                                    ValueSome
+                                    <| ExceptionCache.CaptureOrRetrieve exn
+
+                            if error.IsSome then
+                                let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+
+                                if __stack_go2 then
                                     MethodBuilder.SetException(
                                         &sm.Data.MethodBuilder,
-                                        sm.Data.Error.SourceException
+                                        error.Value.SourceException
                                     )
                     ))
                     (SetStateMachineMethodImpl<_>(fun sm state ->
@@ -170,27 +174,31 @@ module TasksUnit =
                 __stateMachine<TaskBaseStateMachineData<'T, _>, _>
                     (MoveNextMethodImpl<_>(fun sm ->
                         __resumeAt sm.ResumptionPoint
+                        let mutable error = ValueNone
 
-                        try
-                            let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
+                        let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go1 then
+                        if __stack_go1 then
+                            try
                                 let __stack_code_fin = code.Invoke(&sm)
-                                sm.Data.Finished <- __stack_code_fin
-                        with exn ->
-                            sm.Data.Finished <- true
-                            sm.Data.Error <- ExceptionCache.CaptureOrRetrieve exn
 
-                        if sm.Data.Finished then
-                            let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                if __stack_code_fin then
+                                    let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go2 then
-                                if isNull sm.Data.Error then
-                                    MethodBuilder.SetResult(&sm.Data.MethodBuilder)
-                                else
+                                    if __stack_go2 then
+                                        MethodBuilder.SetResult(&sm.Data.MethodBuilder)
+                            with exn ->
+                                error <-
+                                    ValueSome
+                                    <| ExceptionCache.CaptureOrRetrieve exn
+
+                            if error.IsSome then
+                                let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+
+                                if __stack_go2 then
                                     MethodBuilder.SetException(
                                         &sm.Data.MethodBuilder,
-                                        sm.Data.Error.SourceException
+                                        error.Value.SourceException
                                     )
                     ))
                     (SetStateMachineMethodImpl<_>(fun sm state ->

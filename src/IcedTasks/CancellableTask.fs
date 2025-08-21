@@ -49,8 +49,6 @@ module CancellableTasks =
             (code: CancellableTaskBaseCode<'T, 'T, _>)
             : CancellableTask<'T> =
 
-            let mutable sm = CancellableTaskBaseStateMachine<'T, _>()
-
             let initialResumptionFunc =
                 CancellableTaskBaseResumptionFunc<'T, _>(fun sm -> code.Invoke(&sm))
 
@@ -89,6 +87,8 @@ module CancellableTasks =
                 }
 
             fun (ct) ->
+                let mutable sm = CancellableTaskBaseStateMachine<'T, _>()
+
                 if ct.IsCancellationRequested then
                     Task.FromCanceled<_>(ct)
                 else
@@ -105,27 +105,34 @@ module CancellableTasks =
                 __stateMachine<CancellableTaskBaseStateMachineData<'T, _>, CancellableTask<'T>>
                     (MoveNextMethodImpl<_>(fun sm ->
                         __resumeAt sm.ResumptionPoint
+                        let mutable error = ValueNone
 
-                        try
-                            let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
+                        let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go1 then
+                        if __stack_go1 then
+                            try
                                 let __stack_code_fin = code.Invoke(&sm)
-                                sm.Data.Finished <- __stack_code_fin
-                        with exn ->
-                            sm.Data.Finished <- true
-                            sm.Data.Error <- ExceptionCache.CaptureOrRetrieve exn
 
-                        if sm.Data.Finished then
-                            let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                if __stack_code_fin then
+                                    let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go2 then
-                                if isNull sm.Data.Error then
-                                    MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
-                                else
+                                    if __stack_go2 then
+                                        MethodBuilder.SetResult(
+                                            &sm.Data.MethodBuilder,
+                                            sm.Data.Result
+                                        )
+                            with exn ->
+                                error <-
+                                    ValueSome
+                                    <| ExceptionCache.CaptureOrRetrieve exn
+
+                            if error.IsSome then
+                                let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+
+                                if __stack_go2 then
                                     MethodBuilder.SetException(
                                         &sm.Data.MethodBuilder,
-                                        sm.Data.Error.SourceException
+                                        error.Value.SourceException
                                     )
                     ))
                     (SetStateMachineMethodImpl<_>(fun sm state ->
@@ -259,51 +266,59 @@ module CancellableTasks =
                 __stateMachine<CancellableTaskBaseStateMachineData<'T, _>, CancellableTask<'T>>
                     (MoveNextMethodImpl<_>(fun sm ->
                         __resumeAt sm.ResumptionPoint
+                        let mutable error = ValueNone
 
-                        try
-                            let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
+                        let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go1 then
+                        if __stack_go1 then
+                            try
                                 let __stack_code_fin = code.Invoke(&sm)
-                                sm.Data.Finished <- __stack_code_fin
-                        with exn ->
-                            sm.Data.Finished <- true
-                            sm.Data.Error <- ExceptionCache.CaptureOrRetrieve exn
 
-                        if sm.Data.Finished then
-                            let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                if __stack_code_fin then
+                                    let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
 
-                            if __stack_go2 then
-                                if isNull sm.Data.Error then
-                                    MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
-                                else
+                                    if __stack_go2 then
+                                        MethodBuilder.SetResult(
+                                            &sm.Data.MethodBuilder,
+                                            sm.Data.Result
+                                        )
+                            with exn ->
+                                error <-
+                                    ValueSome
+                                    <| ExceptionCache.CaptureOrRetrieve exn
+
+                            if error.IsSome then
+                                let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+
+                                if __stack_go2 then
                                     MethodBuilder.SetException(
                                         &sm.Data.MethodBuilder,
-                                        sm.Data.Error.SourceException
+                                        error.Value.SourceException
                                     )
                     ))
                     (SetStateMachineMethodImpl<_>(fun sm state ->
                         MethodBuilder.SetStateMachine(&sm.Data.MethodBuilder, state)
                     ))
                     (AfterCode<_, CancellableTask<'T>>(fun sm ->
+                        let sm = sm
+
                         // backgroundTask { .. } escapes to a background thread where necessary
                         // See spec of ConfigureAwait(false) at https://devblogs.microsoft.com/dotnet/configureawait-faq/
                         if
                             isNull SynchronizationContext.Current
                             && obj.ReferenceEquals(TaskScheduler.Current, TaskScheduler.Default)
                         then
-                            let mutable sm = sm
 
                             fun (ct) ->
                                 if ct.IsCancellationRequested then
                                     Task.FromCanceled<_>(ct)
                                 else
+                                    let mutable sm = sm
                                     sm.Data.CancellationToken <- ct
                                     sm.Data.MethodBuilder <- AsyncTaskMethodBuilder<'T>.Create()
                                     sm.Data.MethodBuilder.Start(&sm)
                                     sm.Data.MethodBuilder.Task
                         else
-                            let sm = sm // copy contents of state machine so we can capture it
 
                             fun (ct) ->
                                 if ct.IsCancellationRequested then
@@ -311,7 +326,7 @@ module CancellableTasks =
                                 else
                                     Task.Run<'T>(
                                         (fun () ->
-                                            let mutable sm = sm // host local mutable copy of contents of state machine on this thread pool thread
+                                            let mutable sm = sm
                                             sm.Data.CancellationToken <- ct
 
                                             sm.Data.MethodBuilder <-

@@ -22,12 +22,6 @@ module TaskBase =
         val mutable Result: 'T
 
         [<DefaultValue(false)>]
-        val mutable Error: ExceptionDispatchInfoNull
-
-        [<DefaultValue(false)>]
-        val mutable Finished: bool
-
-        [<DefaultValue(false)>]
         val mutable MethodBuilder: 'Builder
 
     /// This is used by the compiler as a template for creating state machine structs
@@ -52,9 +46,11 @@ module TaskBase =
                 let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
 
                 if not __stack_yield_fin then
+                    let mutable __stack_awaiter = Trampoline.Current
+
                     MethodBuilder.AwaitUnsafeOnCompleted(
                         &sm.Data.MethodBuilder,
-                        Trampoline.Current.AwaiterRef,
+                        &__stack_awaiter,
                         &sm
                     )
 
