@@ -28,20 +28,30 @@ type Trampoline private () =
             executing <- false
 
     let start action =
-        next <- ValueSome action
         executing <- true
         loop ()
 
     let set action =
         failIfNot (Thread.CurrentThread.ManagedThreadId = ownerThreadId) "thread"
         failIfNot next.IsNone "next is not None"
-        if executing then next <- ValueSome action else start action
+        next <- ValueSome action
+
+        if not executing then
+            start action
+
+    let setDynamic action =
+        failIfNot (Thread.CurrentThread.ManagedThreadId = ownerThreadId) "thread"
+        failIfNot next.IsNone "next is not None in setDynamic"
+        next <- ValueSome action
+
+        if not executing then
+            start action
 
     static let holder = new ThreadLocal<Trampoline>(fun () -> Trampoline())
 
     interface ICriticalNotifyCompletion with
         member _.OnCompleted(continuation: Action) = set continuation
-        member _.UnsafeOnCompleted(continuation: Action) = set continuation
+        member _.UnsafeOnCompleted(continuation: Action) = setDynamic continuation
 
     member this.AwaiterRef: ICriticalNotifyCompletion ref = ref this
 
@@ -100,3 +110,9 @@ type DynamicState =
     | Running
     | SetResult
     | SetException of ExceptionDispatchInfo
+
+[<Struct>]
+type DynamicContinuation =
+    | Stop
+    | Immediate
+    | Await of ICriticalNotifyCompletion

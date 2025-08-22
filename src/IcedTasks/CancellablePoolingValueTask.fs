@@ -59,71 +59,58 @@ module CancellablePoolingValueTasks =
 
                 { new CancellableTaskBaseResumptionDynamicInfo<'T, _>(initialResumptionFunc) with
                     member info.MoveNext(sm) =
-                        let mutable keepGoing = true
+                        let mutable continuation = Stop
+                        let current = state
 
-                        while keepGoing do
-                            keepGoing <- false
+                        match current with
+                        | InitialYield ->
+                            state <- Running
 
-                            let current = state
-
-                            match current with
-                            | InitialYield ->
-                                state <- Running
-
+                            continuation <-
                                 if BindDepthCounter.Check() then
-                                    MethodBuilder.AwaitUnsafeOnCompleted(
-                                        &sm.Data.MethodBuilder,
-                                        Trampoline.Current.AwaiterRef,
-                                        &sm
-                                    )
+                                    Await Trampoline.Current
                                 else
-                                    keepGoing <- true
-                            | Running ->
-                                try
-                                    let step = info.ResumptionFunc.Invoke(&sm)
+                                    Immediate
+                        | Running ->
+                            try
+                                let step = info.ResumptionFunc.Invoke(&sm)
 
-                                    if step then
-                                        state <- SetResult
+                                if step then
+                                    state <- SetResult
 
+                                    continuation <-
                                         if BindDepthCounter.Check() then
-                                            // Yield before setting result to prevent stack overflow.
-                                            MethodBuilder.AwaitUnsafeOnCompleted(
-                                                &sm.Data.MethodBuilder,
-                                                Trampoline.Current.AwaiterRef,
-                                                &sm
-                                            )
+                                            Await Trampoline.Current
                                         else
-                                            keepGoing <- true
-                                    else
-                                        match sm.ResumptionDynamicInfo.ResumptionData with
-                                        | :? ICriticalNotifyCompletion as awaiter ->
-                                            let mutable awaiter = awaiter
+                                            Immediate
+                                else
+                                    continuation <-
+                                        Await(downcast sm.ResumptionDynamicInfo.ResumptionData)
+                            with exn ->
+                                state <- SetException(ExceptionCache.CaptureOrRetrieve exn)
 
-                                            MethodBuilder.AwaitUnsafeOnCompleted(
-                                                &sm.Data.MethodBuilder,
-                                                &awaiter,
-                                                &sm
-                                            )
-                                        | _ -> ()
-                                with exn ->
-                                    state <- SetException(ExceptionCache.CaptureOrRetrieve exn)
-
+                                continuation <-
                                     if BindDepthCounter.Check() then
-                                        // Yield before setting exception to prevent stack overflow.
-                                        MethodBuilder.AwaitUnsafeOnCompleted(
-                                            &sm.Data.MethodBuilder,
-                                            Trampoline.Current.AwaiterRef,
-                                            &sm
-                                        )
+                                        Await Trampoline.Current
                                     else
-                                        keepGoing <- true
-                            | SetResult ->
-                                MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
-                            | SetException edi ->
-                                MethodBuilder.SetException(
-                                    &sm.Data.MethodBuilder,
-                                    edi.SourceException
-                                )
+                                        Immediate
+                        | SetResult ->
+                            MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
+                        | SetException edi ->
+                            MethodBuilder.SetException(&sm.Data.MethodBuilder, edi.SourceException)
+
+                        match continuation with
+                        | Await awaiter ->
+                            sm.ResumptionDynamicInfo.ResumptionData <- null
+                            let mutable awaiter = awaiter
+
+                            MethodBuilder.AwaitUnsafeOnCompleted(
+                                &sm.Data.MethodBuilder,
+                                &awaiter,
+                                &sm
+                            )
+                        | Immediate -> info.MoveNext &sm
+                        | Stop -> ()
 
                     member _.SetStateMachine(sm, state) =
                         MethodBuilder.SetStateMachine(&sm.Data.MethodBuilder, state)

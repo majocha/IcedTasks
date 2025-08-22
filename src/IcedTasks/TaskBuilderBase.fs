@@ -48,11 +48,7 @@ module TaskBase =
                 if not __stack_yield_fin then
                     let mutable __stack_awaiter = Trampoline.Current
 
-                    MethodBuilder.AwaitUnsafeOnCompleted(
-                        &sm.Data.MethodBuilder,
-                        &__stack_awaiter,
-                        &sm
-                    )
+                    MethodBuilder.AwaitOnCompleted(&sm.Data.MethodBuilder, &__stack_awaiter, &sm)
 
                 __stack_yield_fin
             else
