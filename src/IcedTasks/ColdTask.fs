@@ -52,15 +52,17 @@ module ColdTasks =
 
     let inline yieldOnBindLimit () =
         ColdTaskCode(fun sm ->
-            if BindDepthCounter.Check() then
+            if Trampoline.Current.Check() then
                 let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
 
                 if not __stack_yield_fin then
-                    let mutable __stack_awaiter = Trampoline.Current
+                    MethodBuilder.AwaitOnCompleted(
+                        &sm.Data.MethodBuilder,
+                        Trampoline.Current.AwaiterRef,
+                        &sm
+                    )
 
-                    MethodBuilder.AwaitOnCompleted(&sm.Data.MethodBuilder, &__stack_awaiter, &sm)
-
-                __stack_yield_fin
+                false
             else
                 true
         )
@@ -315,44 +317,41 @@ module ColdTasks =
                         let mutable continuation = Stop
                         let current = state
 
+                        let hijackCheck () =
+                            if Trampoline.Current.Check() then Bounce else Immediate
+
                         match current with
                         | InitialYield ->
                             state <- Running
-
-                            continuation <-
-                                if BindDepthCounter.Check() then
-                                    Await Trampoline.Current
-                                else
-                                    Immediate
+                            continuation <- hijackCheck ()
                         | Running ->
                             try
                                 let step = info.ResumptionFunc.Invoke(&sm)
 
                                 if step then
                                     state <- SetResult
-
-                                    continuation <-
-                                        if BindDepthCounter.Check() then
-                                            Await Trampoline.Current
-                                        else
-                                            Immediate
+                                    continuation <- hijackCheck ()
                                 else
                                     continuation <-
                                         Await(downcast sm.ResumptionDynamicInfo.ResumptionData)
                             with exn ->
                                 state <- SetException(ExceptionCache.CaptureOrRetrieve exn)
 
-                                continuation <-
-                                    if BindDepthCounter.Check() then
-                                        Await Trampoline.Current
-                                    else
-                                        Immediate
+                                continuation <- hijackCheck ()
                         | SetResult ->
                             MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
                         | SetException edi ->
                             MethodBuilder.SetException(&sm.Data.MethodBuilder, edi.SourceException)
 
-                        match continuation with
+                        let currentContinuation = continuation
+
+                        match currentContinuation with
+                        | Bounce ->
+                            MethodBuilder.AwaitOnCompleted(
+                                &sm.Data.MethodBuilder,
+                                Trampoline.Current.AwaiterRef,
+                                &sm
+                            )
                         | Await awaiter ->
                             sm.ResumptionDynamicInfo.ResumptionData <- null
                             let mutable awaiter = awaiter

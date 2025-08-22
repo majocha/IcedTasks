@@ -15,7 +15,12 @@ type Trampoline private () =
 
     let ownerThreadId = Thread.CurrentThread.ManagedThreadId
 
-    let mutable next: ValueOption<Action> = ValueNone
+    [<Literal>]
+    static let bindLimit = 5 // super low for now to weed out any bugs
+
+    let mutable counter = 0
+
+    let mutable next: Action voption = ValueNone
     let mutable executing = false
 
     let loop () =
@@ -23,7 +28,11 @@ type Trampoline private () =
             while next.IsSome do
                 let action = next.Value
                 next <- ValueNone
-                action.Invoke()
+
+                try
+                    action.Invoke()
+                with exn ->
+                    failwithf $"Unhandled exception in trampoline: {exn}"
         finally
             executing <- false
 
@@ -39,43 +48,22 @@ type Trampoline private () =
         if not executing then
             start action
 
-    let setDynamic action =
-        failIfNot (Thread.CurrentThread.ManagedThreadId = ownerThreadId) "thread"
-        failIfNot next.IsNone "next is not None in setDynamic"
-        next <- ValueSome action
-
-        if not executing then
-            start action
-
     static let holder = new ThreadLocal<Trampoline>(fun () -> Trampoline())
 
     interface ICriticalNotifyCompletion with
         member _.OnCompleted(continuation: Action) = set continuation
-        member _.UnsafeOnCompleted(continuation: Action) = setDynamic continuation
+        member _.UnsafeOnCompleted _ = failwith "use AwaitOnCompleted instead"
 
     member this.AwaiterRef: ICriticalNotifyCompletion ref = ref this
 
-    static member Current = holder.Value
-
-module BindDepthCounter =
-    [<Literal>]
-    let bindLimit = 10
-
-    let counter = new ThreadLocal<int>()
-
-    let inline Check () =
-        counter.Value <-
-            counter.Value
+    member _.Check() =
+        counter <-
+            counter
             + 1
 
-        if
-            counter.Value
-            >= bindLimit
-        then
-            counter.Value <- 0
-            true
-        else
-            false
+        counter % bindLimit = 0
+
+    static member Current = holder.Value
 
 module ExceptionCache =
     let store = ConditionalWeakTable<exn, ExceptionDispatchInfo>()
@@ -115,4 +103,5 @@ type DynamicState =
 type DynamicContinuation =
     | Stop
     | Immediate
+    | Bounce
     | Await of ICriticalNotifyCompletion

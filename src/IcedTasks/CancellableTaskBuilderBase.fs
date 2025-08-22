@@ -51,15 +51,17 @@ module CancellableTaskBase =
 
     let inline yieldOnBindLimit () =
         CancellableTaskBaseCode(fun sm ->
-            if BindDepthCounter.Check() then
+            if Trampoline.Current.Check() then
                 let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
 
                 if not __stack_yield_fin then
-                    let mutable __stack_awaiter = Trampoline.Current
+                    MethodBuilder.AwaitOnCompleted(
+                        &sm.Data.MethodBuilder,
+                        Trampoline.Current.AwaiterRef,
+                        &sm
+                    )
 
-                    MethodBuilder.AwaitOnCompleted(&sm.Data.MethodBuilder, &__stack_awaiter, &sm)
-
-                __stack_yield_fin
+                false
             else
                 true
         )
