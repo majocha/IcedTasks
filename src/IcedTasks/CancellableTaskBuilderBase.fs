@@ -54,13 +54,13 @@ module CancellableTaskBase =
     and CancellableTaskBaseCode<'TOverall, 'T, 'Builder> =
         ResumableCode<CancellableTaskBaseStateMachineData<'TOverall, 'Builder>, 'T>
 
-    let inline yieldOnBindLimitAux check =
+    let inline yieldOnBindLimit () =
         CancellableTaskBaseCode(fun sm ->
-            if check () then
+            if Trampoline.Current.ShouldBounce then
                 let __stack_yield_fin = ResumableCode.Yield().Invoke(&sm)
 
                 if not __stack_yield_fin then
-                    MethodBuilder.AwaitUnsafeOnCompleted(
+                    MethodBuilder.AwaitOnCompleted(
                         &sm.Data.MethodBuilder,
                         Trampoline.Current.Ref,
                         &sm
@@ -70,11 +70,6 @@ module CancellableTaskBase =
             else
                 true
         )
-
-    let inline yieldOnBindLimit () = yieldOnBindLimitAux BindContext.Check
-
-    let inline yieldOnBindLimitWhenIsBind () =
-        yieldOnBindLimitAux BindContext.CheckWhenIsBind
 
     /// <summary>
     /// Contains methods to build TaskLikes using the F# computation expression syntax
@@ -257,8 +252,7 @@ module CancellableTaskBase =
                 if Awaiter.IsCompleted awaiter then
                     cont.Invoke(&sm)
                 else
-                    sm.ResumptionDynamicInfo.ResumptionData <-
-                        (awaiter :> ICriticalNotifyCompletion)
+                    sm.ResumptionDynamicInfo.ResumptionData <- Awaiting awaiter
 
                     sm.ResumptionDynamicInfo.ResumptionFunc <- cont
                     false
@@ -744,9 +738,7 @@ module CancellableTaskBase =
             member inline _.Source
                 ([<InlineIfLambda>] coldTask: unit -> Task<'T>)
                 : CancellationToken -> Awaiter<TaskAwaiter<'T>, 'T> =
-                (fun (ct: CancellationToken) ->
-                    Awaitable.GetTaskAwaiter(BindContext.SetIsBind coldTask ())
-                )
+                (fun (ct: CancellationToken) -> Awaitable.GetTaskAwaiter(coldTask ()))
 
             /// <summary>Allows the computation expression to turn other types into CancellationToken -> 'Awaiter</summary>
             ///

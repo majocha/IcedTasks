@@ -1,16 +1,18 @@
 namespace IcedTasks
 
 open System
-open System.Collections.Generic
 open System.Runtime.ExceptionServices
 open System.Threading
 open System.Runtime.CompilerServices
+open IcedTasks.TaskLike
 
-[<AutoOpen>]
-module Assert =
-    let failIfNot condition msg =
-        if not condition then
-            failwith $" assertion failed {msg}"
+type DynamicState =
+    | Running
+    | SetResult
+    | SetException of ExceptionDispatchInfo
+    | Awaiting of ICriticalNotifyCompletion
+    | Bounce of DynamicState
+    | Immediate of DynamicState
 
 type Trampoline private () =
 
@@ -18,13 +20,31 @@ type Trampoline private () =
 
     static let holder = new ThreadLocal<_>(fun () -> Trampoline())
 
+    let mutable depth = 0
+
+    [<Literal>]
+    let MaxDepth = 50
+
+    let insufficientStack () =
+        depth <- depth + 1
+        depth % MaxDepth = 0
+
+    //// calling TryEnsureSufficientExecutionStack is relatively expensive, so we only call it every MaxDepth calls
+    //        if current.Value % MaxDepth = 0 then
+    //#if NETSTANDARD2_0
+    //            try RuntimeHelpers.EnsureSufficientExecutionStack(); true with _ -> false
+    //#else
+    //            RuntimeHelpers.TryEnsureSufficientExecutionStack()
+    //#endif
+    //        else
+    //            true
+
     let mutable pending: Action voption = ValueNone
     let mutable running = false
 
-    let start (action: Action) =
+    let start () =
         try
             running <- true
-            action.Invoke()
 
             while pending.IsSome do
                 let next = pending.Value
@@ -34,50 +54,32 @@ type Trampoline private () =
             running <- false
 
     let set action =
-        failIfNot (Thread.CurrentThread.ManagedThreadId = ownerThreadId) "thread"
-        failIfNot pending.IsNone "trampoline taken, pending is not None"
+        assert (Thread.CurrentThread.ManagedThreadId = ownerThreadId) // "Trampoline used from wrong thread"
+        assert pending.IsNone // "Trampoline set while already pending"
 
-        if running then
-            pending <- ValueSome action
-        else
-            start action
+        pending <- ValueSome action
+
+        if not running then
+            start ()
 
     interface ICriticalNotifyCompletion with
-        member _.OnCompleted(continuation) = set continuation
-        member _.UnsafeOnCompleted(continuation) = set continuation
+        member _.OnCompleted continuation = set continuation
+        member _.UnsafeOnCompleted continuation = set continuation
 
     member this.Ref: ICriticalNotifyCompletion ref = ref this
 
+    member _.IsStackSufficient() =
+        depth <- depth + 1
+
+        depth % MaxDepth
+        <> 0
+
+    member _.ShouldBounce =
+        not running
+        || pending.IsNone
+           && insufficientStack ()
+
     static member Current = holder.Value
-
-module BindContext =
-    [<Literal>]
-    let bindLimit = 100
-
-    let bindCount = new ThreadLocal<int>()
-    let isBind = new ThreadLocal<bool>()
-
-    let inline incrementBindCount () =
-        bindCount.Value <-
-            bindCount.Value
-            + 1
-
-        bindCount.Value % bindLimit = 0
-
-    /// Signal to the task that it is evaluated as a bound value in a computation expression.
-    /// It will use current trampoline to avoid stack overflows in recursive binds.
-    let inline SetIsBind f x =
-        isBind.Value <- true
-        f x
-
-    let inline CheckWhenIsBind () =
-        try
-            isBind.Value
-            && incrementBindCount ()
-        finally
-            isBind.Value <- false
-
-    let inline Check () = incrementBindCount ()
 
 module ExceptionCache =
     let store = ConditionalWeakTable<exn, ExceptionDispatchInfo>()
@@ -105,17 +107,3 @@ module ExceptionCache =
             Awaiter.GetResult awaiter
         with exn ->
             Throw exn
-
-[<Struct>]
-type DynamicState =
-    | InitialYield
-    | Running
-    | SetResult
-    | SetException of ExceptionDispatchInfo
-
-[<Struct>]
-type DynamicContinuation =
-    | Stop
-    | Immediate
-    | Bounce
-    | Await of ICriticalNotifyCompletion
