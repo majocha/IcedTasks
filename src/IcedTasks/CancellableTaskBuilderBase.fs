@@ -383,20 +383,20 @@ module CancellableTaskBase =
                 sm.Data.ThrowIfCancellationRequested()
                 let mutable awaiter = awaiter
 
-                let cont =
-                    (CancellableTaskBaseResumptionFunc<'TOverall, 'Builder>(fun sm ->
-                        let result = Awaiter.GetResult awaiter
-                        (continuation result).Invoke(&sm)
-                    ))
-
                 // shortcut to continue immediately
                 if Awaiter.IsCompleted awaiter then
-                    cont.Invoke(&sm)
+                    (Awaiter.GetResult awaiter
+                     |> continuation)
+                        .Invoke(&sm)
                 else
-                    sm.ResumptionDynamicInfo.ResumptionData <-
-                        (awaiter :> ICriticalNotifyCompletion)
+                    let resumptionFunc =
+                        CancellableTaskBaseResumptionFunc(fun sm ->
+                            let result = ExceptionCache.GetResultOrThrow awaiter
+                            (continuation result).Invoke(&sm)
+                        )
 
-                    sm.ResumptionDynamicInfo.ResumptionFunc <- cont
+                    sm.ResumptionDynamicInfo.ResumptionFunc <- resumptionFunc
+                    sm.ResumptionDynamicInfo.ResumptionData <- Awaiting awaiter
                     false
 
 
@@ -428,8 +428,7 @@ module CancellableTaskBase =
                 if Awaiter.IsCompleted awaiter then
                     cont.Invoke(&sm)
                 else
-                    sm.ResumptionDynamicInfo.ResumptionData <-
-                        (awaiter :> ICriticalNotifyCompletion)
+                    sm.ResumptionDynamicInfo.ResumptionData <- Awaiting awaiter
 
                     sm.ResumptionDynamicInfo.ResumptionFunc <- cont
                     false

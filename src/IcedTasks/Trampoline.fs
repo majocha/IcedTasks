@@ -25,10 +25,6 @@ type Trampoline private () =
     [<Literal>]
     let MaxDepth = 50
 
-    let insufficientStack () =
-        depth <- depth + 1
-        depth % MaxDepth = 0
-
     //// calling TryEnsureSufficientExecutionStack is relatively expensive, so we only call it every MaxDepth calls
     //        if current.Value % MaxDepth = 0 then
     //#if NETSTANDARD2_0
@@ -41,6 +37,8 @@ type Trampoline private () =
 
     let mutable pending: Action voption = ValueNone
     let mutable running = false
+
+    let mutable primed = true
 
     let start () =
         try
@@ -68,16 +66,15 @@ type Trampoline private () =
 
     member this.Ref: ICriticalNotifyCompletion ref = ref this
 
-    member _.IsStackSufficient() =
-        depth <- depth + 1
-
-        depth % MaxDepth
-        <> 0
-
     member _.ShouldBounce =
-        not running
-        || pending.IsNone
-           && insufficientStack ()
+        not running || (depth <- depth + 1; depth % MaxDepth = 0)
+
+    member _.Prime() = primed <- true
+
+    member _.WasPrimed() = 
+        let wasPrimed = primed
+        primed <- false
+        wasPrimed
 
     static member Current = holder.Value
 

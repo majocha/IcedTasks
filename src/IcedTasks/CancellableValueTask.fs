@@ -65,7 +65,11 @@ module CancellableValueTasks =
                     Immediate state
 
             let resumptionInfo =
-                let initialState = maybeBounce Running
+                let initialState =
+                    if Trampoline.Current.WasPrimed() then
+                        maybeBounce Running
+                    else
+                        Immediate Running
 
                 { new CancellableTaskBaseResumptionDynamicInfo<'T, _>(initialResumptionFunc,
                                                                       ResumptionData = initialState) with
@@ -146,7 +150,7 @@ module CancellableValueTasks =
 
                         let mutable error = ValueNone
 
-                        let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
+                        let __stack_go1 = not (Trampoline.Current.WasPrimed()) || yieldOnBindLimit().Invoke(&sm)
 
                         if __stack_go1 then
                             try

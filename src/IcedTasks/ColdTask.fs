@@ -254,8 +254,7 @@ module ColdTasks =
                         if awaiter.IsCompleted then
                             cont.Invoke(&sm)
                         else
-                            sm.ResumptionDynamicInfo.ResumptionData <-
-                                (awaiter :> ICriticalNotifyCompletion)
+                            sm.ResumptionDynamicInfo.ResumptionData <- Awaiting awaiter
 
                             sm.ResumptionDynamicInfo.ResumptionFunc <- cont
                             false
@@ -317,7 +316,11 @@ module ColdTasks =
                     Immediate state
 
             let resumptionInfo =
-                let initialState = maybeBounce Running
+                let initialState =
+                    if Trampoline.Current.WasPrimed() then
+                        maybeBounce Running
+                    else
+                        Immediate Running
 
                 { new ColdTaskResumptionDynamicInfo<'T>(initialResumptionFunc,
                                                         ResumptionData = initialState) with
@@ -385,7 +388,7 @@ module ColdTasks =
 
                         let mutable error = ValueNone
 
-                        let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
+                        let __stack_go1 = not (Trampoline.Current.WasPrimed()) || yieldOnBindLimit().Invoke(&sm)
 
                         if __stack_go1 then
                             try
@@ -451,7 +454,7 @@ module ColdTasks =
 
                         let mutable error = ValueNone
 
-                        let __stack_go1 = yieldOnBindLimit().Invoke(&sm)
+                        let __stack_go1 = not (Trampoline.Current.WasPrimed()) || yieldOnBindLimit().Invoke(&sm)
 
                         if __stack_go1 then
                             try
