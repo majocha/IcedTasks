@@ -309,18 +309,19 @@ module ColdTasks =
 
             let initialResumptionFunc = ColdTaskResumptionFunc<'T>(fun sm -> code.Invoke &sm)
 
+            let bounceAllowed = Trampoline.Current.IsAwaited()
+
             let maybeBounce state =
-                if Trampoline.Current.ShouldBounce then
+                if
+                    bounceAllowed
+                    && Trampoline.Current.ShouldBounce
+                then
                     Bounce state
                 else
                     Immediate state
 
             let resumptionInfo =
-                let initialState =
-                    if Trampoline.Current.WasPrimed() then
-                        maybeBounce Running
-                    else
-                        Immediate Running
+                let initialState = maybeBounce Running
 
                 { new ColdTaskResumptionDynamicInfo<'T>(initialResumptionFunc,
                                                         ResumptionData = initialState) with
@@ -388,14 +389,20 @@ module ColdTasks =
 
                         let mutable error = ValueNone
 
-                        let __stack_go1 = not (Trampoline.Current.WasPrimed()) || yieldOnBindLimit().Invoke(&sm)
+                        let noBounce = not (Trampoline.Current.IsAwaited())
+
+                        let __stack_go1 =
+                            noBounce
+                            || yieldOnBindLimit().Invoke(&sm)
 
                         if __stack_go1 then
                             try
                                 let __stack_code_fin = code.Invoke(&sm)
 
                                 if __stack_code_fin then
-                                    let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                    let __stack_go2 =
+                                        noBounce
+                                        || yieldOnBindLimit().Invoke(&sm)
 
                                     if __stack_go2 then
                                         sm.Data.MethodBuilder.SetResult(sm.Data.Result)
@@ -403,7 +410,9 @@ module ColdTasks =
                                 error <- ValueSome(ExceptionCache.CaptureOrRetrieve exn)
 
                             if error.IsSome then
-                                let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                let __stack_go2 =
+                                    noBounce
+                                    || yieldOnBindLimit().Invoke(&sm)
 
                                 if __stack_go2 then
                                     sm.Data.MethodBuilder.SetException(error.Value.SourceException)
@@ -454,14 +463,20 @@ module ColdTasks =
 
                         let mutable error = ValueNone
 
-                        let __stack_go1 = not (Trampoline.Current.WasPrimed()) || yieldOnBindLimit().Invoke(&sm)
+                        let noBounce = not (Trampoline.Current.IsAwaited())
+
+                        let __stack_go1 =
+                            noBounce
+                            || yieldOnBindLimit().Invoke(&sm)
 
                         if __stack_go1 then
                             try
                                 let __stack_code_fin = code.Invoke(&sm)
 
                                 if __stack_code_fin then
-                                    let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                    let __stack_go2 =
+                                        noBounce
+                                        || yieldOnBindLimit().Invoke(&sm)
 
                                     if __stack_go2 then
                                         sm.Data.MethodBuilder.SetResult(sm.Data.Result)
@@ -469,7 +484,9 @@ module ColdTasks =
                                 error <- ValueSome(ExceptionCache.CaptureOrRetrieve exn)
 
                             if error.IsSome then
-                                let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                let __stack_go2 =
+                                    noBounce
+                                    || yieldOnBindLimit().Invoke(&sm)
 
                                 if __stack_go2 then
                                     sm.Data.MethodBuilder.SetException(error.Value.SourceException)
@@ -533,7 +550,7 @@ module ColdTasks =
                 when Awaiter<'Awaiter, 'TResult1>>
                 (
                     sm: byref<_>,
-                    getAwaiter: unit -> 'Awaiter,
+                    [<InlineIfLambda>] getAwaiter: unit -> 'Awaiter,
                     continuation: ('TResult1 -> ColdTaskCode<'TOverall, 'TResult2>)
                 ) : bool =
                 let mutable awaiter = getAwaiter ()
@@ -571,7 +588,7 @@ module ColdTasks =
             member inline _.Bind<'TResult1, 'TResult2, 'Awaiter, 'TOverall
                 when Awaiter<'Awaiter, 'TResult1>>
                 (
-                    getAwaiter: unit -> 'Awaiter,
+                    [<InlineIfLambda>] getAwaiter: unit -> 'Awaiter,
                     continuation: ('TResult1 -> ColdTaskCode<'TOverall, 'TResult2>)
                 ) : ColdTaskCode<'TOverall, 'TResult2> =
 
@@ -609,14 +626,14 @@ module ColdTasks =
             [<NoEagerConstraintApplication>]
             member inline this.ReturnFrom<'TResult1, 'TResult2, 'Awaiter, 'TOverall
                 when Awaiter<'Awaiter, 'TResult1>>
-                (getAwaiter: unit -> 'Awaiter)
+                ([<InlineIfLambda>] getAwaiter: unit -> 'Awaiter)
                 : ColdTaskCode<_, _> =
                 this.Bind((fun () -> getAwaiter ()), (fun v -> this.Return v))
 
             [<NoEagerConstraintApplication>]
             member inline this.BindReturn<'TResult1, 'TResult2, 'Awaiter, 'TOverall
                 when Awaiter<'Awaiter, 'TResult1>>
-                (getAwaiter: unit -> 'Awaiter, f)
+                ([<InlineIfLambda>] getAwaiter: unit -> 'Awaiter, f)
                 : ColdTaskCode<'TResult2, 'TResult2> =
                 this.Bind((fun () -> getAwaiter ()), (fun v -> this.Return(f v)))
 
@@ -641,7 +658,7 @@ module ColdTasks =
             [<NoEagerConstraintApplication>]
             member inline _.Source<'TResult1, 'TResult2, 'Awaiter, 'TOverall
                 when Awaiter<'Awaiter, 'TResult1>>
-                (getAwaiter: unit -> 'Awaiter)
+                ([<InlineIfLambda>] getAwaiter: unit -> 'Awaiter)
                 : unit -> 'Awaiter =
                 getAwaiter
 
@@ -765,7 +782,7 @@ module ColdTasks =
             ///
             /// <returns>unit -> 'Awaiter</returns>
             member inline _.Source([<InlineIfLambda>] task: ColdTask<'TResult1>) =
-                (fun () -> (task ()).GetAwaiter())
+                (fun () -> (Trampoline.Allow task ()).GetAwaiter())
 
             /// <summary>Allows the computation expression to turn other types into unit -> 'Awaiter</summary>
             ///
@@ -911,8 +928,7 @@ module ColdTasks =
         let inline toUnit ([<InlineIfLambda>] coldTask: ColdTask<_>) : ColdTask =
             fun () -> coldTask () :> Task
 
-        let inline internal getAwaiter ([<InlineIfLambda>] ctask: ColdTask<_>) =
-            fun () -> (ctask ()).GetAwaiter()
+        let inline internal getAwaiter (ctask: ColdTask<_>) = fun () -> (ctask ()).GetAwaiter()
 
     /// <exclude />
     [<AutoOpen>]

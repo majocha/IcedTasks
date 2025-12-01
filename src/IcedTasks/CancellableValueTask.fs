@@ -58,18 +58,19 @@ module CancellableValueTasks =
             let initialResumptionFunc =
                 CancellableTaskBaseResumptionFunc<'T, _>(fun sm -> code.Invoke(&sm))
 
+            let bounceAllowed = Trampoline.Current.IsAwaited()
+
             let maybeBounce state =
-                if Trampoline.Current.ShouldBounce then
+                if
+                    bounceAllowed
+                    && Trampoline.Current.ShouldBounce
+                then
                     Bounce state
                 else
                     Immediate state
 
             let resumptionInfo =
-                let initialState =
-                    if Trampoline.Current.WasPrimed() then
-                        maybeBounce Running
-                    else
-                        Immediate Running
+                let initialState = maybeBounce Running
 
                 { new CancellableTaskBaseResumptionDynamicInfo<'T, _>(initialResumptionFunc,
                                                                       ResumptionData = initialState) with
@@ -150,14 +151,20 @@ module CancellableValueTasks =
 
                         let mutable error = ValueNone
 
-                        let __stack_go1 = not (Trampoline.Current.WasPrimed()) || yieldOnBindLimit().Invoke(&sm)
+                        let noBounce = not (Trampoline.Current.IsAwaited())
+
+                        let __stack_go1 =
+                            noBounce
+                            || yieldOnBindLimit().Invoke(&sm)
 
                         if __stack_go1 then
                             try
                                 let __stack_code_fin = code.Invoke(&sm)
 
                                 if __stack_code_fin then
-                                    let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                    let __stack_go2 =
+                                        noBounce
+                                        || yieldOnBindLimit().Invoke(&sm)
 
                                     if __stack_go2 then
                                         MethodBuilder.SetResult(
@@ -168,7 +175,9 @@ module CancellableValueTasks =
                                 error <- ValueSome(ExceptionCache.CaptureOrRetrieve exn)
 
                             if error.IsSome then
-                                let __stack_go2 = yieldOnBindLimit().Invoke(&sm)
+                                let __stack_go2 =
+                                    noBounce
+                                    || yieldOnBindLimit().Invoke(&sm)
 
                                 if __stack_go2 then
                                     MethodBuilder.SetException(
@@ -201,7 +210,7 @@ module CancellableValueTasks =
             ([<InlineIfLambda>] x: CancellationToken -> ValueTask<_>)
             : CancellationToken -> Awaiter<ValueTaskAwaiter<_>, _> =
             fun ct ->
-                x ct
+                Trampoline.Allow x ct
                 |> Awaitable.GetAwaiter
 
         [<NoEagerConstraintApplication>]
