@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net11.0</TargetFramework>
+        <NoWarn>$(NoWarn);FS3513</NoWarn>
+        <RuntimeAsyncBitsPath Condition="'$(RuntimeAsyncBitsPath)' == ''">E:\repos\fsharp\artifacts\bin</RuntimeAsyncBitsPath>
+        <DotnetFscCompilerPath>$(RuntimeAsyncBitsPath)\fsc\Release\net11.0\fsc.dll</DotnetFscCompilerPath>
+        <LangVersion>preview</LangVersion>
+    </PropertyGroup>
+    <PropertyGroup>
+        <Title>IcedTasks</Title>
+        <Description>Adds ColdTask and CancellableTask computation expressions to F#</Description>
+    </PropertyGroup>
+    <ItemGroup>
+        <Compile Include="AssemblyInfo.fs" />
+        <Compile Include="TaskLike.fs" />
+        <Compile Include="TaskBuilderBase.fs" />
+        <Compile Include="ValueTask.fs" />
+        <Compile Include="PoolingValueTask.fs" />
+        <Compile Include="ValueTaskUnit.fs" />
+        <Compile Include="TaskUnit.fs" />
+        <Compile Include="Task.fs" />
+        <Compile Include="AsyncEx.fs" />
+        <Compile Include="ParallelAsync.fs" />
+        <Compile Include="ColdTask.fs" />
+        <Compile Include="CancellableTaskBuilderBase.fs" />
+        <Compile Include="CancellableValueTask.fs" />
+        <Compile Include="CancellablePoolingValueTask.fs" />
+        <Compile Include="CancellableTask.fs" />
+        <Compile Include="AutoOpens.fs" />
+    </ItemGroup>
+    <ItemGroup>
+        <!--
+      Runtime-async requires the FSharp.Core built from dotnet/fsharp PR #20235
+      (provides __runtimeAsyncReturn and friends). The compiler itself is selected
+      through DotnetFscCompilerPath in Directory.Build.props.
+    -->
+        <Reference Include="FSharp.Core">
+            <HintPath>$(RuntimeAsyncBitsPath)\FSharp.Core\Release\net10.0\FSharp.Core.dll</HintPath>
+            <Private>true</Private>
+        </Reference>
+    </ItemGroup>
+</Project>
