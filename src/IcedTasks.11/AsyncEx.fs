@@ -5,7 +5,6 @@ open System.Threading
 open System.Threading.Tasks
 open System.Runtime.ExceptionServices
 open System.Collections.Generic
-open IcedTasks.Nullness
 open IcedTasks.TaskLike
 
 type internal Async =
@@ -209,7 +208,7 @@ type AsyncExBuilder() =
         Async.TryFinallyAsync(computation, compensation)
 
     member inline this.Using
-        (resource: #IAsyncDisposableNull, [<InlineIfLambda>] (binder: 'c -> Async<'ok>))
+        (resource: #IAsyncDisposable, [<InlineIfLambda>] (binder: 'c -> Async<'ok>))
         =
         this.TryFinallyAsync(
             binder resource,
@@ -283,7 +282,7 @@ module AsyncExExtensionsLowPriority =
 
         member inline _.Source(seq: #seq<_>) = seq
 
-        member inline _.Using(resource: #IDisposableNull, [<InlineIfLambda>] binder) =
+        member inline _.Using(resource: #IDisposable, [<InlineIfLambda>] binder) =
             async.Using(resource, binder)
 
         [<NoEagerConstraintApplication>]
@@ -318,6 +317,7 @@ module AsyncExExtensionsLowPriority =
 /// <exclude/>
 [<AutoOpen>]
 module AsyncExExtensionsHighPriority =
+    open RuntimeAsyncBuilder
 
     type AsyncExBuilder with
 
@@ -334,6 +334,46 @@ module AsyncExExtensionsHighPriority =
         member inline _.Source(vtask: ValueTask<_>) = AsyncEx.AwaitValueTask vtask
 
         member inline _.Source(vtask: ValueTask) = AsyncEx.AwaitValueTask vtask
+
+    /// <exclude />
+    [<AutoOpen>]
+    module HighPriority =
+        type Microsoft.FSharp.Control.Async with
+
+            /// <summary>
+            /// Return an asynchronous computation that will check if ValueTask is completed or wait for
+            /// the given task to complete and return its result.
+            /// </summary>
+            /// <param name="vTask">The task to await.</param>
+            static member inline AwaitValueTask(vTask: ValueTask<_>) : Async<_> =
+                // https://github.com/dotnet/runtime/issues/31503#issuecomment-554415966
+                if vTask.IsCompletedSuccessfully then
+                    async.Return vTask.Result
+                else
+                    Async.AwaitTask(vTask.AsTask())
+
+
+            /// <summary>
+            /// Return an asynchronous computation that will check if ValueTask is completed or wait for
+            /// the given task to complete and return its result.
+            /// </summary>
+            /// <param name="vTask">The task to await.</param>
+            static member inline AwaitValueTask(vTask: ValueTask) : Async<unit> =
+                // https://github.com/dotnet/runtime/issues/31503#issuecomment-554415966
+                if vTask.IsCompletedSuccessfully then
+                    async.Return()
+                else
+                    Async.AwaitTask(vTask.AsTask())
+
+
+            /// <summary>
+            /// Runs an asynchronous computation, starting immediately on the current operating system thread,
+            /// but also returns the execution as <see cref="T:System.Threading.Tasks.ValueTask`1" />.
+            /// </summary>
+            static member inline AsValueTask(computation: Async<'T>) : ValueTask<'T> =
+                Async.StartImmediateAsTask(computation)
+                |> ValueTask<'T>
+
 
 namespace IcedTasks.Polyfill.Async
 

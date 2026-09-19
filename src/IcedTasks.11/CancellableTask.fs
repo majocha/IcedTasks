@@ -12,7 +12,7 @@
 namespace IcedTasks.CancellableTasks
 
 open IcedTasks.TaskLike
-open IcedTasks.CancellableTaskBase
+open IcedTasks.CancellablePoolingValueTasks
 
 /// Contains methods to build CancellableTasks using the F# computation expression syntax
 [<AutoOpen>]
@@ -28,308 +28,82 @@ module CancellableTasks =
     open Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicOperators
     open Microsoft.FSharp.Collections
     open IcedTasks
-
-    /// CancellationToken -> Task<'T>
-    type CancellableTask<'T> = CancellationToken -> Task<'T>
-    /// CancellationToken -> Task
-    type CancellableTask = CancellationToken -> Task
+    open RuntimeAsyncBuilder
 
     /// Contains methods to build CancellableTasks using the F# computation expression syntax
     type CancellableTaskBuilder() =
 
-        inherit CancellableTaskBuilderBase()
+        inherit RuntimeAsyncBuilder()
 
-        // This is the dynamic implementation - this is not used
-        // for statically compiled tasks.  An executor (resumptionFuncExecutor) is
-        // registered with the state machine, plus the initial resumption.
-        // The executor stays constant throughout the execution, it wraps each step
-        // of the execution in a try/with.  The resumption is changed at each step
-        // to represent the continuation of the computation.
-        /// <summary>
-        /// The entry point for the dynamic implementation of the corresponding operation. Do not use directly, only used when executing quotations that involve tasks or other reflective execution of F# code.
-        /// </summary>
-        static member inline RunDynamic
-            (code: CancellableTaskBaseCode<'T, 'T, _>)
-            : CancellableTask<'T> =
-
-            let mutable sm = CancellableTaskBaseStateMachine<'T, _>()
-
-            let initialResumptionFunc =
-                CancellableTaskBaseResumptionFunc<'T, _>(fun sm -> code.Invoke(&sm))
-
-            let resumptionInfo =
-                { new CancellableTaskBaseResumptionDynamicInfo<'T, _>(initialResumptionFunc) with
-                    member info.MoveNext(sm) =
-                        let mutable savedExn = null
-
-                        try
-                            sm.ResumptionDynamicInfo.ResumptionData <- null
-                            let step = info.ResumptionFunc.Invoke(&sm)
-
-                            if step then
-                                MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
-                            else
-                                match sm.ResumptionDynamicInfo.ResumptionData with
-                                | :? ICriticalNotifyCompletion as awaiter ->
-                                    let mutable awaiter = awaiter
-                                    // assert not (isNull awaiter)
-                                    MethodBuilder.AwaitOnCompleted(
-                                        &sm.Data.MethodBuilder,
-                                        &awaiter,
-                                        &sm
-                                    )
-                                | awaiter -> assert not (isNull awaiter)
-
-                        with exn ->
-                            savedExn <- exn
-                        // Run SetException outside the stack unwind, see https://github.com/dotnet/roslyn/issues/26567
-                        match savedExn with
-                        | null -> ()
-                        | exn -> MethodBuilder.SetException(&sm.Data.MethodBuilder, exn)
-
-                    member _.SetStateMachine(sm, state) =
-                        MethodBuilder.SetStateMachine(&sm.Data.MethodBuilder, state)
-                }
-
-            fun (ct) ->
-                if ct.IsCancellationRequested then
-                    Task.FromCanceled<_>(ct)
-                else
-                    sm.Data.CancellationToken <- ct
-                    sm.ResumptionDynamicInfo <- resumptionInfo
-                    sm.Data.MethodBuilder <- AsyncTaskMethodBuilder<'T>.Create()
-                    sm.Data.MethodBuilder.Start(&sm)
-                    sm.Data.MethodBuilder.Task
-
-
-        /// Hosts the task code in a state machine and starts the task.
-        member inline _.Run(code: CancellableTaskBaseCode<'T, 'T, _>) : CancellableTask<'T> =
-            if __useResumableCode then
-                __stateMachine<CancellableTaskBaseStateMachineData<'T, _>, CancellableTask<'T>>
-                    (MoveNextMethodImpl<_>(fun sm ->
-                        //-- RESUMABLE CODE START
-                        __resumeAt sm.ResumptionPoint
-                        let mutable __stack_exn = null
-
-                        try
-                            let __stack_code_fin = code.Invoke(&sm)
-
-                            if __stack_code_fin then
-                                MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
-                        with exn ->
-                            __stack_exn <- exn
-                        // Run SetException outside the stack unwind, see https://github.com/dotnet/roslyn/issues/26567
-                        match __stack_exn with
-                        | null -> ()
-                        | exn -> MethodBuilder.SetException(&sm.Data.MethodBuilder, exn)
-                    //-- RESUMABLE CODE END
-                    ))
-                    (SetStateMachineMethodImpl<_>(fun sm state ->
-                        MethodBuilder.SetStateMachine(&sm.Data.MethodBuilder, state)
-                    ))
-                    (AfterCode<_, _>(fun sm ->
-                        let sm = sm
-
-                        fun (ct) ->
-                            if ct.IsCancellationRequested then
-                                Task.FromCanceled<_>(ct)
-                            else
-                                let mutable sm = sm
-                                sm.Data.CancellationToken <- ct
-                                sm.Data.MethodBuilder <- AsyncTaskMethodBuilder<'T>.Create()
-                                sm.Data.MethodBuilder.Start(&sm)
-                                sm.Data.MethodBuilder.Task
-                    ))
-            else
-                CancellableTaskBuilder.RunDynamic(code)
-
-        /// Specify a Source of CancellationToken -> Task<_> on the real type to allow type inference to work
-        member inline _.Source
-            ([<InlineIfLambda>] x: CancellationToken -> Task<_>)
-            : CancellationToken -> Awaiter<TaskAwaiter<_>, _> =
-            fun ct -> Awaitable.GetTaskAwaiter(x ct)
-
-        [<NoEagerConstraintApplication>]
-        member inline this.MergeSources
-            (
-                [<InlineIfLambda>] left: CancellationToken -> 'Awaiter1,
-                [<InlineIfLambda>] right: CancellationToken -> 'Awaiter2
-            ) =
-            this.Source(
-                this.Run(
-                    this.Bind(
-                        (fun ct -> this.Source(ValueTask<_> ct)),
-                        fun ct ->
-                            let left = left ct
-                            let right = right ct
-
-                            this.Bind(
-                                left,
-                                fun leftR ->
-                                    this.BindReturn(right, (fun rightR -> struct (leftR, rightR)))
-                            )
-                    )
-                )
-            )
-
-        [<NoEagerConstraintApplication>]
-        member inline this.MergeSources
-            (left: 'Awaiter1, [<InlineIfLambda>] right: CancellationToken -> 'Awaiter2)
-            =
-            this.Source(
-                this.Run(
-                    this.Bind(
-                        (fun ct -> this.Source(ValueTask<_> ct)),
-                        fun ct ->
-                            let right = right ct
-
-                            this.Bind(
-                                left,
-                                fun leftR ->
-                                    this.BindReturn(right, (fun rightR -> struct (leftR, rightR)))
-                            )
-                    )
-                )
-            )
-
-        [<NoEagerConstraintApplication>]
-        member inline this.MergeSources
-            ([<InlineIfLambda>] left: CancellationToken -> 'Awaiter1, right: 'Awaiter2)
-            =
-
-            this.Source(
-                this.Run(
-                    this.Bind(
-                        (fun ct -> this.Source(ValueTask<_> ct)),
-                        fun ct ->
-                            let left = left ct
-
-                            this.Bind(
-                                left,
-                                fun leftR ->
-                                    this.BindReturn(right, (fun rightR -> struct (leftR, rightR)))
-                            )
-                    )
-                )
-            )
-
-        [<NoEagerConstraintApplication>]
-        member inline this.MergeSources(left: 'Awaiter1, right: 'Awaiter2) =
-            this.Source(
-                this.Run(
-                    this.Bind(
-                        left,
-                        fun leftR -> this.BindReturn(right, (fun rightR -> struct (leftR, rightR)))
-                    )
-                )
-            )
+        member inline _.Run([<InlineIfLambda>] code) : CancellableTask<'T> =
+            fun ct -> __runtimeAsyncReturn(
+                Cancellation.setToken ct
+                code())
 
 
     /// Contains methods to build CancellableTasks using the F# computation expression syntax
     type BackgroundCancellableTaskBuilder() =
 
-        inherit CancellableTaskBuilderBase()
+        inherit RuntimeAsyncBuilder()
 
-        /// <summary>
-        /// The entry point for the dynamic implementation of the corresponding operation. Do not use directly, only used when executing quotations that involve tasks or other reflective execution of F# code.
-        /// </summary>
-        static member inline RunDynamic
-            (code: CancellableTaskBaseCode<'T, 'T, _>)
-            : CancellableTask<'T> =
-            // backgroundTask { .. } escapes to a background thread where necessary
-            // See spec of ConfigureAwait(false) at https://devblogs.microsoft.com/dotnet/configureawait-faq/
-            if
-                isNull SynchronizationContext.Current
-                && obj.ReferenceEquals(TaskScheduler.Current, TaskScheduler.Default)
-            then
-                CancellableTaskBuilder.RunDynamic(code)
-            else
-                fun (ct) ->
-                    Task.Run<'T>((fun () -> CancellableTaskBuilder.RunDynamic (code) (ct)), ct)
+        member inline _.Run([<InlineIfLambda>] code) : CancellableTask<'T> =
+            fun ct ->
+                Task.Run( fun () ->
+                    __runtimeAsyncReturn(
+                    Cancellation.setToken ct
+                    code()))
 
-        /// <summary>
-        /// Hosts the task code in a state machine and starts the task, executing in the ThreadPool using Task.Run
-        /// </summary>
-        member inline _.Run(code: CancellableTaskBaseCode<'T, 'T, _>) : CancellableTask<'T> =
-            if __useResumableCode then
-                __stateMachine<CancellableTaskBaseStateMachineData<'T, _>, CancellableTask<'T>>
-                    (MoveNextMethodImpl<_>(fun sm ->
-                        //-- RESUMABLE CODE START
-                        __resumeAt sm.ResumptionPoint
-                        let mutable __stack_exn: Exception ValueOption = ValueNone
-
-                        try
-                            let __stack_code_fin = code.Invoke(&sm)
-
-                            if __stack_code_fin then
-                                MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
-                        with exn ->
-                            __stack_exn <- ValueSome exn
-                        // Run SetException outside the stack unwind, see https://github.com/dotnet/roslyn/issues/26567
-                        match __stack_exn with
-                        | ValueNone -> ()
-                        | ValueSome exn -> MethodBuilder.SetException(&sm.Data.MethodBuilder, exn)
-                    //-- RESUMABLE CODE END
-                    ))
-                    (SetStateMachineMethodImpl<_>(fun sm state ->
-                        MethodBuilder.SetStateMachine(&sm.Data.MethodBuilder, state)
-                    ))
-                    (AfterCode<_, CancellableTask<'T>>(fun sm ->
-                        // backgroundTask { .. } escapes to a background thread where necessary
-                        // See spec of ConfigureAwait(false) at https://devblogs.microsoft.com/dotnet/configureawait-faq/
-                        if
-                            isNull SynchronizationContext.Current
-                            && obj.ReferenceEquals(TaskScheduler.Current, TaskScheduler.Default)
-                        then
-                            let mutable sm = sm
-
-                            fun (ct) ->
-                                if ct.IsCancellationRequested then
-                                    Task.FromCanceled<_>(ct)
-                                else
-                                    sm.Data.CancellationToken <- ct
-                                    sm.Data.MethodBuilder <- AsyncTaskMethodBuilder<'T>.Create()
-                                    sm.Data.MethodBuilder.Start(&sm)
-                                    sm.Data.MethodBuilder.Task
-                        else
-                            let sm = sm // copy contents of state machine so we can capture it
-
-                            fun (ct) ->
-                                if ct.IsCancellationRequested then
-                                    Task.FromCanceled<_>(ct)
-                                else
-                                    Task.Run<'T>(
-                                        (fun () ->
-                                            let mutable sm = sm // host local mutable copy of contents of state machine on this thread pool thread
-                                            sm.Data.CancellationToken <- ct
-
-                                            sm.Data.MethodBuilder <-
-                                                AsyncTaskMethodBuilder<'T>.Create()
-
-                                            sm.Data.MethodBuilder.Start(&sm)
-                                            sm.Data.MethodBuilder.Task
-                                        ),
-                                        ct
-                                    )
-                    ))
-
-            else
-                BackgroundCancellableTaskBuilder.RunDynamic(code)
-
-    /// Contains the cancellableTask computation expression builder.
+    /// Contains the cancellableTask computation expressions.
     [<AutoOpen>]
     module CancellableTaskBuilder =
 
-        /// <summary>
-        /// Builds a cancellableTask using computation expression syntax.
-        /// </summary>
         let cancellableTask = CancellableTaskBuilder()
-
-        /// <summary>
-        /// Builds a cancellableTask using computation expression syntax which switches to execute on a background thread if not already doing so.
-        /// </summary>
         let backgroundCancellableTask = BackgroundCancellableTaskBuilder()
 
+    [<AutoOpen>]
+    module HighPriority =
+        open IcedTasks.AsyncEx
+
+        type AsyncEx with
+
+            static member inline AwaitCancellableTask
+                ([<InlineIfLambda>] t: CancellableTask<'T>)
+                =
+                asyncEx {
+                    let! ct = Async.CancellationToken
+                    return! t ct
+                }
+
+            static member inline AwaitCancellableTask
+                ([<InlineIfLambda>] t: CancellableTask)
+                =
+                asyncEx {
+                    let! ct = Async.CancellationToken
+                    return! t ct
+                }
+
+        type Microsoft.FSharp.Control.Async with
+
+            static member inline AwaitCancellableTask
+                ([<InlineIfLambda>] t: CancellableTask<'T>)
+                =
+                async {
+                    let! ct = Async.CancellationToken
+                    return! t ct |> Async.AwaitTask
+                }
+
+            static member inline AwaitCancellableTask
+                ([<InlineIfLambda>] t: CancellableTask)
+                =
+                async {
+                    let! ct = Async.CancellationToken
+                    return! t ct |> Async.AwaitTask
+                }
+
+            static member inline AsCancellableTask
+                (computation: Async<'T>)
+                : CancellableTask<'T> =
+                fun ct -> Async.StartAsTask(computation, cancellationToken = ct)
 
     /// <summary>
     /// A set of extension methods making it possible to bind against <see cref='T:IcedTasks.CancellableTasks.CancellableTask`1'/> in async computations.

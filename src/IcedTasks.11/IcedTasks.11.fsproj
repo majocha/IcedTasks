@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>net11.0</TargetFramework>
         <NoWarn>$(NoWarn);FS3513</NoWarn>
@@ -13,20 +13,16 @@
     <ItemGroup>
         <Compile Include="AssemblyInfo.fs" />
         <Compile Include="TaskLike.fs" />
-        <Compile Include="TaskBuilderBase.fs" />
+        <Compile Include="RuntimeAsyncBuilder.fs" />
         <Compile Include="ValueTask.fs" />
         <Compile Include="PoolingValueTask.fs" />
         <Compile Include="ValueTaskUnit.fs" />
-        <Compile Include="TaskUnit.fs" />
-        <Compile Include="Task.fs" />
         <Compile Include="AsyncEx.fs" />
         <Compile Include="ParallelAsync.fs" />
-        <Compile Include="ColdTask.fs" />
-        <Compile Include="CancellableTaskBuilderBase.fs" />
+        <Compile Include="Builders.fs" />
         <Compile Include="CancellableValueTask.fs" />
         <Compile Include="CancellablePoolingValueTask.fs" />
         <Compile Include="CancellableTask.fs" />
-        <Compile Include="AutoOpens.fs" />
     </ItemGroup>
     <ItemGroup>
         <!--

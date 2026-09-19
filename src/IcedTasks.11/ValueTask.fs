@@ -2,7 +2,6 @@ namespace IcedTasks.ValueTasks
 
 
 open System.Threading.Tasks
-open IcedTasks.TaskLike
 
 /// <summary>
 /// Module with extension methods for <see cref="T:System.Threading.Tasks.ValueTask`1"/>.
@@ -77,9 +76,7 @@ module ValueTaskExtensions =
 
 namespace IcedTasks.ValueTasks
 
-open IcedTasks
-open IcedTasks.TaskLike
-open IcedTasks.TaskBase
+open RuntimeAsyncBuilder
 
 /// Contains methods to build ValueTasks using the F# computation expression syntax
 [<AutoOpen>]
@@ -97,108 +94,10 @@ module ValueTasks =
     /// </summary>
     type ValueTaskBuilder() =
 
-        inherit TaskBuilderBase()
+        inherit RuntimeAsyncBuilder()
 
-        // This is the dynamic implementation - this is not used
-        // for statically compiled tasks.  An executor (resumptionFuncExecutor) is
-        // registered with the state machine, plus the initial resumption.
-        // The executor stays constant throughout the execution, it wraps each step
-        // of the execution in a try/with.  The resumption is changed at each step
-        // to represent the continuation of the computation.
-        /// <summary>
-        /// The entry point for the dynamic implementation of the corresponding operation. Do not use directly, only used when executing quotations that involve tasks or other reflective execution of F# code.
-        /// </summary>
-        static member inline RunDynamic(code: TaskBaseCode<'T, 'T, _>) : ValueTask<'T> =
-
-            let mutable sm = TaskBaseStateMachine<'T, _>()
-
-            let initialResumptionFunc =
-                TaskBaseResumptionFunc<'T, _>(fun sm -> code.Invoke(&sm))
-
-            let resumptionInfo =
-                { new TaskBaseResumptionDynamicInfo<'T, _>(initialResumptionFunc) with
-                    member info.MoveNext(sm) =
-                        let mutable savedExn = null
-
-                        try
-                            sm.ResumptionDynamicInfo.ResumptionData <- null
-                            let step = info.ResumptionFunc.Invoke(&sm)
-
-                            if step then
-                                MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
-                            else
-                                match sm.ResumptionDynamicInfo.ResumptionData with
-                                | :? ICriticalNotifyCompletion as awaiter ->
-                                    let mutable awaiter = awaiter
-                                    // assert not (isNull awaiter)
-                                    MethodBuilder.AwaitOnCompleted(
-                                        &sm.Data.MethodBuilder,
-                                        &awaiter,
-                                        &sm
-                                    )
-                                | awaiter -> assert not (isNull awaiter)
-
-                        with exn ->
-                            savedExn <- exn
-                        // Run SetException outside the stack unwind, see https://github.com/dotnet/roslyn/issues/26567
-                        match savedExn with
-                        | null -> ()
-                        | exn -> MethodBuilder.SetException(&sm.Data.MethodBuilder, exn)
-
-                    member _.SetStateMachine(sm, state) =
-                        MethodBuilder.SetStateMachine(&sm.Data.MethodBuilder, state)
-                }
-
-            sm.ResumptionDynamicInfo <- resumptionInfo
-            sm.Data.MethodBuilder <- AsyncValueTaskMethodBuilder<'T>.Create()
-            MethodBuilder.Start(&sm.Data.MethodBuilder, &sm)
-            MethodBuilder.get_Task (&sm.Data.MethodBuilder)
-
-        /// Hosts the task code in a state machine and starts the task.
-        member inline _.Run(code: TaskBaseCode<'T, 'T, _>) : ValueTask<'T> =
-            if __useResumableCode then
-                __stateMachine<TaskBaseStateMachineData<'T, _>, ValueTask<'T>>
-                    (MoveNextMethodImpl<_>(fun sm ->
-                        //-- RESUMABLE CODE START
-                        __resumeAt sm.ResumptionPoint
-                        let mutable __stack_exn = null
-
-                        try
-                            let __stack_code_fin = code.Invoke(&sm)
-
-                            if __stack_code_fin then
-                                MethodBuilder.SetResult(&sm.Data.MethodBuilder, sm.Data.Result)
-                        with exn ->
-                            __stack_exn <- exn
-                        // Run SetException outside the stack unwind, see https://github.com/dotnet/roslyn/issues/26567
-                        match __stack_exn with
-                        | null -> ()
-                        | exn -> MethodBuilder.SetException(&sm.Data.MethodBuilder, exn)
-                    //-- RESUMABLE CODE END
-                    ))
-                    (SetStateMachineMethodImpl<_>(fun sm state ->
-                        MethodBuilder.SetStateMachine(&sm.Data.MethodBuilder, state)
-                    ))
-                    (AfterCode<_, _>(fun sm ->
-                        sm.Data.MethodBuilder <- AsyncValueTaskMethodBuilder<'T>.Create()
-                        MethodBuilder.Start(&sm.Data.MethodBuilder, &sm)
-                        MethodBuilder.get_Task (&sm.Data.MethodBuilder)
-                    ))
-            else
-                ValueTaskBuilder.RunDynamic(code)
-
-        /// Specify a Source of ValueTask<_> on the real type to allow type inference to work
-        member inline _.Source(v: ValueTask<_>) = Awaitable.GetAwaiter v
-
-        member inline this.MergeSources(left, right) =
-            this.Source(
-                this.Run(
-                    this.Bind(
-                        left,
-                        fun leftR -> this.BindReturn(right, (fun rightR -> struct (leftR, rightR)))
-                    )
-                )
-            )
+        member inline _.Run([<InlineIfLambda>] code) : ValueTask<'T> =
+            __runtimeAsyncReturnValueTask(code())
 
     /// Contains the valueTask computation expression builder.
     [<AutoOpen>]
