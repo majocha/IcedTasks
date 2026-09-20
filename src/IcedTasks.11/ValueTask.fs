@@ -1,4 +1,4 @@
-namespace IcedTasks.ValueTasks
+namespace IcedTasks
 
 
 open System.Threading.Tasks
@@ -73,10 +73,6 @@ module ValueTaskExtensions =
 // Original notice:
 // To the extent possible under law, the author(s) have dedicated all copyright and related and neighboring rights
 // to this software to the public domain worldwide. This software is distributed without any warranty.
-
-namespace IcedTasks.ValueTasks
-
-open RuntimeAsyncBuilder
 
 /// Contains methods to build ValueTasks using the F# computation expression syntax
 [<AutoOpen>]

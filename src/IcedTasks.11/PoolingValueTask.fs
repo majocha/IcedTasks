@@ -1,7 +1,6 @@
-namespace IcedTasks.PoolingValueTasks
+namespace IcedTasks
 
 open IcedTasks
-open RuntimeAsyncBuilder
 open IcedTasks.ValueTasks
 
 /// Contains methods to build PoolingValueTasks using the F# computation expression syntax

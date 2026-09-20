@@ -14,7 +14,6 @@ module ValueTasksUnit =
     open Microsoft.FSharp.Core.CompilerServices
     open Microsoft.FSharp.Core.CompilerServices.StateMachineHelpers
     open Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicOperators
-    open RuntimeAsyncBuilder
     open Microsoft.FSharp.Core.CompilerServices
 
 

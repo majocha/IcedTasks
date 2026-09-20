@@ -1,4 +1,4 @@
-namespace IcedTasks.AsyncEx
+namespace IcedTasks
 
 open System
 open System.Threading

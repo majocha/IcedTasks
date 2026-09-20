@@ -1,4 +1,4 @@
-namespace IcedTasks.CancellableValueTasks
+namespace IcedTasks
 
 open IcedTasks
 open IcedTasks.ValueTasks
@@ -17,7 +17,6 @@ module CancellableValueTasks =
     open Microsoft.FSharp.Core.CompilerServices.StateMachineHelpers
     open Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicOperators
     open Microsoft.FSharp.Collections
-    open RuntimeAsyncBuilder
 
     /// Contains methods to build CancellableValueTasks using the F# computation expression syntax
     type CancellableValueTaskBuilder() =

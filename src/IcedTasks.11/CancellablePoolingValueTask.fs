@@ -9,7 +9,7 @@
 // To the extent possible under law, the author(s) have dedicated all copyright and related and neighboring rights
 // to this software to the public domain worldwide. This software is distributed without any warranty.
 
-namespace IcedTasks.CancellablePoolingValueTasks
+namespace IcedTasks
 
 #if NET6_0_OR_GREATER
 
@@ -17,8 +17,6 @@ open IcedTasks
 open IcedTasks.TaskLike
 open IcedTasks.ValueTasks
 open IcedTasks.CancellableValueTasks
-
-open RuntimeAsyncBuilder
 
 /// Contains methods to build pooling-backed CancellableValueTasks using the F# computation expression syntax.
 [<AutoOpen>]

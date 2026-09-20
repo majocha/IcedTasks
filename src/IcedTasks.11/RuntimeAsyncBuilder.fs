@@ -1,4 +1,4 @@
-module RuntimeAsyncBuilder
+namespace IcedTasks
 
 open System
 open System.Runtime.CompilerServices
@@ -127,6 +127,12 @@ type RuntimeAsyncBuilder() =
     member inline _.ReturnFrom(source: ValueTask<'T>) = AsyncHelpers.Await source
     member inline _.ReturnFrom(source: ValueTask) = AsyncHelpers.Await source
 
+    member inline _.ReturnFrom(awaiter: Awaiter<_, _>) =
+        if not (Awaiter.isCompleted awaiter) then
+            AsyncHelpers.AwaitAwaiter awaiter
+        Awaiter.getResult awaiter
+
+    [<NoEagerConstraintApplication>]
     member inline _.Bind(awaiter: Awaiter<_, _>, [<InlineIfLambda>] continuation) =
         if not (Awaiter.isCompleted awaiter) then
             AsyncHelpers.AwaitAwaiter awaiter

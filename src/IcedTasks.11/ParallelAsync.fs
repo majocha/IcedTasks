@@ -1,8 +1,8 @@
-namespace IcedTasks.ParallelAsync
+namespace IcedTasks
 
 open System
 open System.Threading
-open IcedTasks.AsyncEx
+open IcedTasks
 
 /// Contains different implementations for parallel zip functions.
 type ParallelAsync =

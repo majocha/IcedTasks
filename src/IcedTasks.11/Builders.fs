@@ -10,8 +10,6 @@ open Microsoft.FSharp.Core.CompilerServices.StateMachineHelpers
 open Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicOperators
 open Microsoft.FSharp.Collections
 
-open RuntimeAsyncBuilder
-
 [<AutoOpen>]
 module Tasks =
 
