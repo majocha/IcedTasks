@@ -37,6 +37,9 @@ module InternalHelpers =
     [<Struct>]
     type Awaited<'T> = Awaited of 'T
 
+    let inline isAlreadyBackground () =
+        isNull SynchronizationContext.Current && obj.ReferenceEquals(TaskScheduler.Current, TaskScheduler.Default)
+
 [<AutoOpen>]
 module ColdTaskTypes =
     /// CancellationToken -> Task<'T>
@@ -104,7 +107,7 @@ type RuntimeAsyncBuilder() =
         for item in sequence do body item
 
     member inline this.For(sequence: IAsyncEnumerable<'T>, [<InlineIfLambda>] body: 'T -> unit) =
-        this.Using(sequence.GetAsyncEnumerator(), fun enumerator ->
+        this.Using(sequence.GetAsyncEnumerator(Cancellation.token.Value), fun enumerator ->
             while enumerator.MoveNextAsync() |> AsyncHelpers.Await do
                 body enumerator.Current)
 
@@ -141,6 +144,6 @@ module RuntimeAsyncBuilderExtensions =
         member inline this.Source(cancellableTask: CancellableTask<'T>) = this.Source(cancellableTask Cancellation.token.Value)
         member inline this.Source(cancellableTask: CancellableValueTask<'T>) = this.Source(cancellableTask Cancellation.token.Value)
         member inline this.Source(cancellableTask: CancellableValueTask) = this.Source(cancellableTask Cancellation.token.Value)
-        member inline this.Source(computation: Async<'T>) = this.Source(Async.StartImmediateAsTask computation)
+        member inline this.Source(computation: Async<'T>) = this.Source(Async.StartImmediateAsTask(computation, Cancellation.token.Value))
 
 

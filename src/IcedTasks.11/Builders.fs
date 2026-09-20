@@ -23,7 +23,10 @@ module Tasks =
         inherit RuntimeAsyncBuilder()
 
         member inline _.Run([<InlineIfLambda>] code) : Task<'T> =
-            Task.Run<'T>(fun () -> __runtimeAsyncReturn(code()))
+            let run () = __runtimeAsyncReturn(code())
+            if isAlreadyBackground () then run ()
+            else
+                Task.Run<'T>(run)
 
     type TaskUnitBuilder() =
         inherit RuntimeAsyncBuilder()
@@ -33,7 +36,9 @@ module Tasks =
     type BackgroundTaskUnitBuilder() =
         inherit RuntimeAsyncBuilder()
             member inline _.Run([<InlineIfLambda>] code) : Task =
-                Task.Run(fun () -> __runtimeAsyncReturnUnit(code()))
+                let run () = __runtimeAsyncReturnUnit(code())
+                if isAlreadyBackground () then run ()
+                else Task.Run(run)
 
 /// Contains the task computation expression builder.
 [<AutoOpen>]
