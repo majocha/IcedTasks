@@ -17,13 +17,17 @@ module Tasks =
         inherit RuntimeAsyncBuilder()
 
         member inline _.Run([<InlineIfLambda>] code) : Task<'T> =
-            __runtimeAsyncReturn(code())
+            __runtimeAsyncReturn(
+                Cancellation.setToken CancellationToken.None
+                code())
 
     type BackgroundTaskBuilder() =
         inherit RuntimeAsyncBuilder()
 
         member inline _.Run([<InlineIfLambda>] code) : Task<'T> =
-            let run () = __runtimeAsyncReturn(code())
+            let run () = __runtimeAsyncReturn(
+                Cancellation.setToken CancellationToken.None
+                code())
             if isAlreadyBackground () then run ()
             else
                 Task.Run<'T>(run)
@@ -31,12 +35,16 @@ module Tasks =
     type TaskUnitBuilder() =
         inherit RuntimeAsyncBuilder()
             member inline _.Run([<InlineIfLambda>] code) : Task =
-                __runtimeAsyncReturnUnit(code())
+                __runtimeAsyncReturnUnit(
+                    Cancellation.setToken CancellationToken.None
+                    code())
 
     type BackgroundTaskUnitBuilder() =
         inherit RuntimeAsyncBuilder()
             member inline _.Run([<InlineIfLambda>] code) : Task =
-                let run () = __runtimeAsyncReturnUnit(code())
+                let run () = __runtimeAsyncReturnUnit(
+                    Cancellation.setToken CancellationToken.None
+                    code())
                 if isAlreadyBackground () then run ()
                 else Task.Run(run)
 
@@ -77,7 +85,11 @@ module ColdTasks =
         inherit RuntimeAsyncBuilder()
 
         member inline _.Run([<InlineIfLambda>] code) : ColdTask<'T> =
-            fun () -> __runtimeAsyncReturn(code())
+            fun () -> __runtimeAsyncReturn(
+                Cancellation.setToken CancellationToken.None
+                code())
+
+        //member inline _.Source(coldTask: ColdTask<'T>) = coldTask ()
 
 
     /// Contains methods to build ColdTasks using the F# computation expression syntax
@@ -86,7 +98,11 @@ module ColdTasks =
         inherit RuntimeAsyncBuilder()
 
         member inline _.Run([<InlineIfLambda>] code) : ColdTask<'T> =
-            fun () -> Task.Run<'T>(fun () -> __runtimeAsyncReturn(code()))
+            fun () -> Task.Run<'T>(fun () -> __runtimeAsyncReturn(
+                Cancellation.setToken CancellationToken.None
+                code()))
+
+        //member inline _.Source(coldTask: ColdTask<'T>) = coldTask ()
 
 
     /// Contains the coldTasks computation expression builder.
@@ -229,404 +245,6 @@ module AsyncExtensions =
 
 namespace IcedTasks.Polyfill.Task
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 open System
 open System.Runtime.CompilerServices
 open System.Threading
@@ -647,14 +265,17 @@ module TaskBuilder =
         member inline _.Run([<InlineIfLambda>] code) : Task<'T> =
             __runtimeAsyncReturn(code())
 
-        member inline _.Source(task: Task<'T>) = task |> AsyncHelpers.Await |> Awaited
+        member inline _.Source(task: Task<'T>) = task |> StartedAwaitable.Task
 
     type BackgroundTaskBuilder() =
         inherit RuntimeAsyncBuilder()
         member inline _.Run([<InlineIfLambda>] code) : Task<'T> =
-            Task.Run<'T>(fun () -> __runtimeAsyncReturn(code()))
+            if isAlreadyBackground () then
+                __runtimeAsyncReturn(code())
+            else
+                Task.Run<'T>(fun () -> __runtimeAsyncReturn(code()))
 
-        member inline _.Source(task: Task<'T>) = task |> AsyncHelpers.Await |> Awaited
+        member inline _.Source(task: Task<'T>) = task |> StartedAwaitable.Task
 
 
     /// <summary>

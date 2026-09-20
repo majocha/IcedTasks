@@ -11,7 +11,26 @@ open Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicOperators
 open Microsoft.FSharp.Collections
 
 [<AutoOpen>]
-module InternalHelpers =
+module ColdTaskTypes =
+    /// CancellationToken -> Task<'T>
+    type CancellableTask<'T> = CancellationToken -> Task<'T>
+    /// CancellationToken -> Task
+    type CancellableTask = CancellationToken -> Task
+    /// CancellationToken -> ValueTask<'T>
+    type CancellableValueTask<'T> = CancellationToken -> ValueTask<'T>
+    /// CancellationToken -> ValueTask
+    type CancellableValueTask = CancellationToken -> ValueTask
+    /// unit -> Task<'T>
+    type ColdTask<'T> = unit -> Task<'T>
+    /// unit -> Task
+    type ColdTask = unit -> Task
+    /// unit -> ValueTask<'T>
+    type ColdValueTask<'T> = unit -> ValueTask<'T>
+    /// unit -> ValueTask
+    type ColdValueTask = unit -> ValueTask
+
+[<AutoOpen>]
+module AwaitableHelpers =
 
     /// A structure that looks like an Awaiter
     type Awaiter<'Awaiter, 'TResult
@@ -32,45 +51,47 @@ module InternalHelpers =
         let inline unsafeOnCompleted (awaiter: Awaiter<_, _>) continuation = awaiter.UnsafeOnCompleted continuation
 
     module Awaitable =
-        let inline getAwaiter (awaitable: Awaitable<_, _, _>) = awaitable.GetAwaiter()
+        let inline getAwaiter (awaitable: Awaitable<_, _, _>) =
+            awaitable.GetAwaiter()
 
-    [<Struct>]
-    type Awaited<'T> = Awaited of 'T
+[<AutoOpen>]
+module AsyncHelpers =
+
+    [<RequireQualifiedAccess>]
+    module Cancellation =
+        let token = AsyncLocal<CancellationToken>()
+
+        let inline setToken ct = token.Value <- ct
+
+        let inline throwIfCancellationRequested() =
+            token.Value.ThrowIfCancellationRequested()
 
     let inline isAlreadyBackground () =
         isNull SynchronizationContext.Current && obj.ReferenceEquals(TaskScheduler.Current, TaskScheduler.Default)
 
-[<AutoOpen>]
-module ColdTaskTypes =
-    /// CancellationToken -> Task<'T>
-    type CancellableTask<'T> = CancellationToken -> Task<'T>
-    /// CancellationToken -> Task
-    type CancellableTask = CancellationToken -> Task
-    /// CancellationToken -> ValueTask<'T>
-    type CancellableValueTask<'T> = CancellationToken -> ValueTask<'T>
-    /// CancellationToken -> ValueTask
-    type CancellableValueTask = CancellationToken -> ValueTask
-    /// unit -> Task<'T>
-    type ColdTask<'T> = unit -> Task<'T>
-    /// unit -> Task
-    type ColdTask = unit -> Task
-    /// unit -> ValueTask<'T>
-    type ColdValueTask<'T> = unit -> ValueTask<'T>
-    /// unit -> ValueTask
-    type ColdValueTask = unit -> ValueTask
+    [<RequireQualifiedAccess>]
+    type StartedAwaitable<'T> =
+    | ValueTaskUnit of ValueTask
+    | ValueTask of ValueTask<'T>
+    | TaskUnit of Task
+    | Task of Task<'T>
 
-[<RequireQualifiedAccess>]
-module Cancellation =
-    let token = AsyncLocal<CancellationToken>()
+    let inline startAwaitable awaitable =
+        __runtimeAsyncReturnValueTask(
+            let awaiter = Awaitable.getAwaiter awaitable
+            if not (Awaiter.isCompleted awaiter) then
+                AsyncHelpers.AwaitAwaiter awaiter
+            Awaiter.getResult awaiter)
 
-    let setToken ct = token.Value <- ct
+    let inline await awaited =
+        match awaited with
+        | StartedAwaitable.ValueTaskUnit vt -> AsyncHelpers.Await vt; Unchecked.defaultof<_>
+        | StartedAwaitable.ValueTask vt -> AsyncHelpers.Await vt
+        | StartedAwaitable.TaskUnit t -> AsyncHelpers.Await t; Unchecked.defaultof<_>
+        | StartedAwaitable.Task t -> AsyncHelpers.Await t
 
-    let inline throwIfCancellationRequested() =
-        token.Value.ThrowIfCancellationRequested()
 
 type RuntimeAsyncBuilder() =
-    static let cancellationToken = AsyncLocal<CancellationToken>()
-
 
     member inline _.Delay([<InlineIfLambda>] generator: unit -> 'T) : unit -> 'T =
         fun () ->
@@ -111,39 +132,43 @@ type RuntimeAsyncBuilder() =
             while enumerator.MoveNextAsync() |> AsyncHelpers.Await do
                 body enumerator.Current)
 
-    member inline _.Bind(Awaited result, [<InlineIfLambda>] continuation) = continuation result
-    member inline _.ReturnFrom(Awaited result) = result
-    member inline _.MergeSources(Awaited left, Awaited right) = Awaited (struct (left, right))
+    member inline _.Bind(awaited: StartedAwaitable<'T>, [<InlineIfLambda>] continuation) = continuation (await awaited)
+
+    member inline _.ReturnFrom(awaited: StartedAwaitable<'T>) = await awaited
 
 [<AutoOpen>]
-module RuntimeAsyncBuilderExtensionsLowPriority =
+module RuntimeAsyncBuilderAwaitableExtensions =
     type RuntimeAsyncBuilder with
-        member inline _.Source(awaitable: Awaitable<_, _, _>) =
-            let awaiter = Awaitable.getAwaiter awaitable
-            if not (Awaiter.isCompleted awaiter) then
-                AsyncHelpers.UnsafeAwaitAwaiter awaiter
-            Awaiter.getResult awaiter |> Awaited
-        member inline this.Source(coldAwaitable: unit -> Awaitable<_, _, _>) = this.Source(coldAwaitable ())
-        member inline this.Source(cancellableAwaitable: CancellationToken -> Awaitable<_, _, _>) = this.Source(cancellableAwaitable Cancellation.token.Value)
+        member inline _.Source(awaitable) =
+            startAwaitable awaitable |> StartedAwaitable.ValueTask
+
+        member inline this.Source(coldAwaitable) =
+            coldAwaitable () |> startAwaitable |> StartedAwaitable.ValueTask
+
+        member inline this.Source(cancellableAwaitable) =
+            cancellableAwaitable Cancellation.token.Value |> startAwaitable |> StartedAwaitable.ValueTask
+
+        member inline _.MergeSources(left, right) =
+            ValueTask.FromResult(struct(await left, await right)) |> StartedAwaitable.ValueTask
 
 [<AutoOpen>]
-module RuntimeAsyncBuilderExtensions =
+module RuntimeAsyncBuilderSources =
     type RuntimeAsyncBuilder with
-        member inline _.Source(sequence: seq<'T>) = sequence
+        member inline _.Source(sequence: 'T seq) = sequence
         member inline _.Source(sequence: IAsyncEnumerable<'T>) = sequence
-        member inline _.Source(task: Task) = task |> AsyncHelpers.Await |> Awaited
-        member inline _.Source(task: ValueTask) = task |> AsyncHelpers.Await |> Awaited
-        member inline _.Source(task: Task<'T>) = task |> AsyncHelpers.Await |> Awaited
-        member inline _.Source(task: ValueTask<'T>) = task |> AsyncHelpers.Await |> Awaited
 
-        member inline this.Source(coldTask: ColdTask<'T>) = this.Source(coldTask ())
-        member inline this.Source(coldTask: ColdTask) = this.Source(coldTask ())
-        member inline this.Source(coldTask: ColdValueTask<'T>) = this.Source(coldTask ())
-        member inline this.Source(coldTask: ColdValueTask) = this.Source(coldTask ())
-        member inline this.Source(cancellableTask: CancellableTask) = this.Source(cancellableTask Cancellation.token.Value)
-        member inline this.Source(cancellableTask: CancellableTask<'T>) = this.Source(cancellableTask Cancellation.token.Value)
-        member inline this.Source(cancellableTask: CancellableValueTask<'T>) = this.Source(cancellableTask Cancellation.token.Value)
-        member inline this.Source(cancellableTask: CancellableValueTask) = this.Source(cancellableTask Cancellation.token.Value)
-        member inline this.Source(computation: Async<'T>) = this.Source(Async.StartImmediateAsTask(computation, Cancellation.token.Value))
+        member inline _.Source(task: Task<'T>) = StartedAwaitable.Task task
+        member inline _.Source(task: Task) = StartedAwaitable.TaskUnit task
+        member inline _.Source(task: ValueTask<'T>) = StartedAwaitable.ValueTask task
+        member inline _.Source(task: ValueTask) = StartedAwaitable.ValueTaskUnit task
 
+        member inline _.Source(coldTask: ColdTask<'T>) = coldTask () |> StartedAwaitable.Task
+        member inline _.Source(coldTask: ColdTask) = coldTask () |> StartedAwaitable.TaskUnit
+        member inline _.Source(cancellableTask: CancellableTask) = cancellableTask Cancellation.token.Value |> StartedAwaitable.TaskUnit
+        member inline _.Source(cancellableTask: CancellableTask<'T>) = cancellableTask Cancellation.token.Value |> StartedAwaitable.Task   
+        member inline _.Source(coldTask: ColdValueTask<'T>) = coldTask () |> StartedAwaitable.ValueTask
+        member inline _.Source(coldTask: ColdValueTask) = coldTask () |> StartedAwaitable.ValueTaskUnit
+        member inline _.Source(cancellableTask: CancellableValueTask<'T>) = cancellableTask Cancellation.token.Value |> StartedAwaitable.ValueTask
+        member inline _.Source(cancellableTask: CancellableValueTask) = cancellableTask Cancellation.token.Value |> StartedAwaitable.ValueTaskUnit
 
+        member inline _.Source(computation: Async<'T>) = Async.StartImmediateAsTask(computation, Cancellation.token.Value) |> StartedAwaitable.Task

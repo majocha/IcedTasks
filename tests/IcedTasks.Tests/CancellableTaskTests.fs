@@ -956,6 +956,7 @@ module CancellableTaskTests =
                         cancellableTask {
                             let! a = valueTask { return 1 }
                             and! b = valueTask { return 2 }
+                            let x = a + b
                             return a + b
                         }
 

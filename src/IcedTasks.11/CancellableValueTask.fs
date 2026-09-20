@@ -28,7 +28,7 @@ module CancellableValueTasks =
                 code())
 
         member inline _.Source(cancellableTask: CancellableValueTask<'T>) =
-            cancellableTask Cancellation.token.Value |> AsyncHelpers.Await |> Awaited
+            cancellableTask Cancellation.token.Value |> StartedAwaitable.ValueTask
             
 
     /// Contains the cancellableValueTask computation expression builder.

@@ -80,6 +80,7 @@ module ValueTasks =
     open System
     open System.Runtime.CompilerServices
     open System.Threading.Tasks
+    open System.Threading
     open Microsoft.FSharp.Core
     open Microsoft.FSharp.Core.CompilerServices
     open Microsoft.FSharp.Core.CompilerServices.StateMachineHelpers
@@ -93,10 +94,11 @@ module ValueTasks =
         inherit RuntimeAsyncBuilder()
 
         member inline _.Run([<InlineIfLambda>] code) : ValueTask<'T> =
-            __runtimeAsyncReturnValueTask(code())
+            __runtimeAsyncReturnValueTask(
+                Cancellation.setToken CancellationToken.None
+                code())
 
-        member inline _.Source(task : ValueTask<'T>) =
-            task |> AsyncHelpers.Await |> Awaited
+        member inline _.Source(task : ValueTask<'T>) = task |> StartedAwaitable.ValueTask
             
 
     /// Contains the valueTask computation expression builder.

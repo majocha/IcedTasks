@@ -9,6 +9,7 @@ open IcedTasks
 module ValueTasksUnit =
     open System
     open System.Runtime.CompilerServices
+    open System.Threading
     open System.Threading.Tasks
     open Microsoft.FSharp.Core
     open Microsoft.FSharp.Core.CompilerServices
@@ -25,7 +26,9 @@ module ValueTasksUnit =
         inherit RuntimeAsyncBuilder()
 
         member inline _.Run([<InlineIfLambda>] code) : ValueTask =
-            __runtimeAsyncReturnValueTaskUnit(code())
+            __runtimeAsyncReturnValueTaskUnit(
+                Cancellation.setToken CancellationToken.None
+                code())
 
     /// Contains the valueTaskUnit computation expression builder.
     [<AutoOpen>]

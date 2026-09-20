@@ -542,6 +542,8 @@ module CancellablePoolingValueTaskTests =
                         timeProvider.ForwardTimeAsync(TimeSpan.FromMilliseconds(100.))
                         |> Async.AwaitTask
 
+                    Expect.isTrue cts.IsCancellationRequested "Cancellation requested"
+
                     Expect.isFalse wasDisposed "Dispose after cancellation"
 
                     do!
@@ -555,6 +557,10 @@ module CancellablePoolingValueTaskTests =
                     do!
                         Expect.CancellationRequested inProgress
                         |> Async.AwaitValueTask
+
+                    do!
+                        timeProvider.ForwardTimeAsync(TimeSpan.FromMilliseconds(200.))
+                        |> Async.AwaitTask
 
                     Expect.isTrue wasDisposed "Dispose after completion"
                 }
