@@ -14,7 +14,6 @@ namespace IcedTasks
 #if NET6_0_OR_GREATER
 
 open IcedTasks
-open IcedTasks.TaskLike
 open IcedTasks.ValueTasks
 open IcedTasks.CancellableValueTasks
 

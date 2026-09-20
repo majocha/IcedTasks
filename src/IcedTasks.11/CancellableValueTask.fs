@@ -2,7 +2,6 @@ namespace IcedTasks
 
 open IcedTasks
 open IcedTasks.ValueTasks
-open IcedTasks.TaskLike
 
 /// Contains methods to build CancellableValueTasks using the F# computation expression syntax.
 [<AutoOpen>]
@@ -28,6 +27,10 @@ module CancellableValueTasks =
                 Cancellation.setToken ct           
                 code())
 
+        member inline _.Source(cancellableTask: CancellableValueTask<'T>) =
+            cancellableTask Cancellation.token.Value |> AsyncHelpers.Await |> Awaited
+            
+
     /// Contains the cancellableValueTask computation expression builder.
     [<AutoOpen>]
     module CancellableValueTaskBuilder =
@@ -45,7 +48,6 @@ module CancellableValueTasks =
 
     [<AutoOpen>]
     module HighPriority =
-        open IcedTasks.AsyncEx
 
         type AsyncEx with
 
@@ -93,8 +95,7 @@ module CancellableValueTasks =
     /// A set of extension methods making it possible to bind against <see cref='T:IcedTasks.CancellableValueTasks.CancellableValueTask`1'/> in async computations.
     /// </summary>
     [<AutoOpen>]
-    module AsyncExtensions =
-        open IcedTasks.AsyncEx
+    module AsyncExtensions3 =
 
         type AsyncExBuilder with
 

@@ -95,6 +95,10 @@ module ValueTasks =
         member inline _.Run([<InlineIfLambda>] code) : ValueTask<'T> =
             __runtimeAsyncReturnValueTask(code())
 
+        member inline _.Source(task : ValueTask<'T>) =
+            task |> AsyncHelpers.Await |> Awaited
+            
+
     /// Contains the valueTask computation expression builder.
     [<AutoOpen>]
     module ValueTaskBuilder =

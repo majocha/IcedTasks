@@ -5,7 +5,6 @@ open System.Threading
 open System.Threading.Tasks
 open System.Runtime.ExceptionServices
 open System.Collections.Generic
-open IcedTasks.TaskLike
 
 type internal Async =
     static member inline map f x =
@@ -122,7 +121,7 @@ type AsyncEx =
 
 /// <exclude/>
 [<AutoOpen>]
-module AsyncExtensions =
+module AsyncExtensions4 =
 
     type Microsoft.FSharp.Control.Async with
 
@@ -317,8 +316,6 @@ module AsyncExExtensionsLowPriority =
 /// <exclude/>
 [<AutoOpen>]
 module AsyncExExtensionsHighPriority =
-    open RuntimeAsyncBuilder
-
     type AsyncExBuilder with
 
         member inline _.Source(seq: #IAsyncEnumerable<_>) = seq
@@ -338,6 +335,32 @@ module AsyncExExtensionsHighPriority =
     /// <exclude />
     [<AutoOpen>]
     module HighPriority =
+        type AsyncEx with
+
+            /// <summary>
+            /// Return an asynchronous computation that will wait for the given cold task to complete and return its result.
+            /// </summary>
+            static member inline AwaitColdTask(t: ColdTask<'T>) =
+                async.Delay(fun () ->
+                    t ()
+                    |> Async.AwaitTask
+                )
+
+            /// <summary>
+            /// Return an asynchronous computation that will wait for the given cold task to complete and return its result.
+            /// </summary>
+            static member inline AwaitColdTask(t: ColdTask) =
+                async.Delay(fun () ->
+                    t ()
+                    |> Async.AwaitTask
+                )
+
+            /// <summary>
+            /// Runs an asynchronous computation, starting on the current operating system thread.
+            /// </summary>
+            static member inline AsColdTask(computation: Async<'T>) : ColdTask<_> =
+                fun () -> Async.StartImmediateAsTask(computation)
+
         type Microsoft.FSharp.Control.Async with
 
             /// <summary>
@@ -374,6 +397,30 @@ module AsyncExExtensionsHighPriority =
                 Async.StartImmediateAsTask(computation)
                 |> ValueTask<'T>
 
+[<AutoOpen>]
+module AsyncExtensions2 =
+    type Microsoft.FSharp.Control.Async with
+
+        /// <summary>Return an asynchronous computation that will wait for the given task to complete and return
+        /// its result.</summary>
+        static member inline AwaitColdTask(t: ColdTask<'T>) =
+            async.Delay(fun () ->
+                t ()
+                |> Async.AwaitTask
+            )
+
+        /// <summary>Return an asynchronous computation that will wait for the given task to complete and return
+        /// its result.</summary>
+        static member inline AwaitColdTask(t: ColdTask) =
+            async.Delay(fun () ->
+                t ()
+                |> Async.AwaitTask
+            )
+
+        /// <summary>Runs an asynchronous computation, starting on the current operating system thread.</summary>
+        static member inline AsColdTask(computation: Async<'T>) : ColdTask<_> =
+            fun () -> Async.StartImmediateAsTask(computation)
+
 
 namespace IcedTasks.Polyfill.Async
 
@@ -385,7 +432,6 @@ namespace IcedTasks.Polyfill.Async
 [<AutoOpen>]
 module PolyfillBuilders =
     open IcedTasks
-    open IcedTasks.AsyncEx
 
     /// <summary>
     /// Builds an asynchronous workflow using computation expression syntax.

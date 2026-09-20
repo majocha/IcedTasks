@@ -1,37 +1,36 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net11.0</TargetFramework>
-    <GenerateProgramFile>false</GenerateProgramFile>
-    <DefineConstants>$(DefineConstants);TEST_NET11_0_OR_GREATER</DefineConstants>
-    <RuntimeAsyncBitsPath Condition="'$(RuntimeAsyncBitsPath)' == ''">d:\source\fsharp\artifacts\bin</RuntimeAsyncBitsPath>
-    <DotnetFscCompilerPath>$(RuntimeAsyncBitsPath)\fsc\Release\net11.0\fsc.dll</DotnetFscCompilerPath>
-    <LangVersion>preview</LangVersion>
-  </PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../src/IcedTasks.11/IcedTasks.11.fsproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <Reference Include="FSharp.Core">
-      <HintPath>$(RuntimeAsyncBitsPath)\FSharp.Core\Release\net10.0\FSharp.Core.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Include="..\IcedTasks.Tests\Expect.fs" />
-    <Compile Include="..\IcedTasks.Tests\AsyncExTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\TaskTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\TaskBackgroundTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\TaskDynamicTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\ValueTaskTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\ValueTaskDynamicTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\PoolingValueTaskTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\PoolingValueTaskDynamicTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\CancellableTaskTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\CancellableValueTaskTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\CancellablePoolingValueTaskTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\ColdTaskTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\ParallelAsyncTests.fs" />
-    <Compile Include="..\IcedTasks.Tests\Main.fs" />
-  </ItemGroup>
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net11.0</TargetFramework>
+        <GenerateProgramFile>false</GenerateProgramFile>
+        <DefineConstants>$(DefineConstants);TEST_NET6_0_OR_GREATER</DefineConstants>
+        <RuntimeAsyncBitsPath Condition="'$(RuntimeAsyncBitsPath)' == ''">d:\source\fsharp\artifacts\bin</RuntimeAsyncBitsPath>
+        <DotnetFscCompilerPath>$(RuntimeAsyncBitsPath)\fsc\Release\net11.0\fsc.dll</DotnetFscCompilerPath>
+        <DisableImplicitFSharpCoreReference>True</DisableImplicitFSharpCoreReference>
+        <LangVersion>preview</LangVersion>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../src/IcedTasks.11/IcedTasks.11.fsproj" />
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="FSharp.Core" VersionOverride="7.0.400" ExcludeAssets="all" PrivateAssets="all" />
+        <Reference Include="FSharp.Core">
+            <HintPath>$(RuntimeAsyncBitsPath)\FSharp.Core\Release\net10.0\FSharp.Core.dll</HintPath>
+        </Reference>
+    </ItemGroup>
+    <ItemGroup>
+        <Compile Include="..\IcedTasks.Tests\Expect.fs" />
+        <Compile Include="..\IcedTasks.Tests\AsyncExTests.fs" />
+        <Compile Include="..\IcedTasks.Tests\TaskTests.fs" />
+        <Compile Include="..\IcedTasks.Tests\TaskBackgroundTests.fs" />
+        <Compile Include="..\IcedTasks.Tests\ValueTaskTests.fs" />
+        <Compile Include="..\IcedTasks.Tests\PoolingValueTaskTests.fs" />
+        <Compile Include="..\IcedTasks.Tests\CancellableTaskTests.fs" />
+        <Compile Include="..\IcedTasks.Tests\CancellableValueTaskTests.fs" />
+        <Compile Include="..\IcedTasks.Tests\CancellablePoolingValueTaskTests.fs" />
+        <Compile Include="..\IcedTasks.Tests\ColdTaskTests.fs" />
+        <Compile Include="..\IcedTasks.Tests\ParallelAsyncTests.fs" />
+        <Compile Include="..\IcedTasks.Tests\Main.fs" />
+    </ItemGroup>
+
 </Project>

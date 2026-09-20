@@ -11,7 +11,6 @@
 
 namespace IcedTasks
 
-open IcedTasks.TaskLike
 open IcedTasks.CancellablePoolingValueTasks
 
 /// Contains methods to build CancellableTasks using the F# computation expression syntax
@@ -39,6 +38,8 @@ module CancellableTasks =
                 Cancellation.setToken ct
                 code())
 
+        member inline _.Source(cancellableTask: CancellableTask<'T>) =
+            cancellableTask Cancellation.token.Value |> AsyncHelpers.Await |> Awaited
 
     /// Contains methods to build CancellableTasks using the F# computation expression syntax
     type BackgroundCancellableTaskBuilder() =
@@ -47,7 +48,7 @@ module CancellableTasks =
 
         member inline _.Run([<InlineIfLambda>] code) : CancellableTask<'T> =
             fun ct ->
-                Task.Run( fun () ->
+                Task.Run<'T>( fun () ->
                     __runtimeAsyncReturn(
                     Cancellation.setToken ct
                     code()))
@@ -107,7 +108,7 @@ module CancellableTasks =
     /// A set of extension methods making it possible to bind against <see cref='T:IcedTasks.CancellableTasks.CancellableTask`1'/> in async computations.
     /// </summary>
     [<AutoOpen>]
-    module AsyncExtensions =
+    module AsyncExtensions1 =
 
         type AsyncExBuilder with
 
