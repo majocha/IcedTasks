@@ -63,7 +63,7 @@ module RuntimeAsyncBuilder =
 
         let inline setToken ct = token.Value <- ct
 
-        let inline throwIfCancellationRequested() =
+        let inline check() =
             token.Value.ThrowIfCancellationRequested()
 
     let inline isAlreadyBackground () =
@@ -75,6 +75,7 @@ module RuntimeAsyncBuilder =
     let inline startAwaitable awaitable =
         let awaiter = Awaitable.getAwaiter awaitable
         Started(fun () ->
+            Cancellation.check()
             AsyncHelpers.UnsafeAwaitAwaiter awaiter
             Awaiter.getResult awaiter)
 
@@ -83,7 +84,7 @@ type RuntimeAsyncBuilder() =
 
     member inline _.Delay([<InlineIfLambda>] generator: unit -> 'T) : unit -> 'T =
         fun () ->
-            Cancellation.throwIfCancellationRequested()
+            Cancellation.check()
             generator()
 
     member inline _.Zero() = ()
@@ -120,9 +121,11 @@ type RuntimeAsyncBuilder() =
             while enumerator.MoveNextAsync() |> AsyncHelpers.Await do
                 body enumerator.Current)
 
-    member inline _.Bind([<InlineIfLambda>] await: Started<'T>, [<InlineIfLambda>] continuation) = await.Invoke() |> continuation
+    member inline _.Bind([<InlineIfLambda>] await: Started<'T>, [<InlineIfLambda>] continuation) =
+        await.Invoke() |> continuation
 
-    member inline _.ReturnFrom([<InlineIfLambda>] await: Started<'T>) = await.Invoke()
+    member inline _.ReturnFrom([<InlineIfLambda>] await: Started<'T>) =
+        await.Invoke()
 
     member inline _.MergeSources([<InlineIfLambda>] left: Started<'A>, [<InlineIfLambda>] right: Started<'B>) =
         Started(fun () ->
@@ -144,41 +147,38 @@ module RuntimeAsyncBuilderAwaitableExtensions =
 module RuntimeAsyncBuilderSources =
     type RuntimeAsyncBuilder with
 
-        // Cold start sources
-        member inline _.Source([<InlineIfLambda>] coldTask: ColdTask<'T>) =
-            let task = coldTask () in Started (fun () -> task |> AsyncHelpers.Await)    
-
-        member inline _.Source([<InlineIfLambda>] coldTask: ColdTask) =
-            let task = coldTask () in Started (fun () -> task |> AsyncHelpers.Await)
-
-        member inline _.Source([<InlineIfLambda>] cancellableTask: CancellableTask) =
-            let task = cancellableTask Cancellation.token.Value in Started (fun () -> task |> AsyncHelpers.Await)
-
-        member inline _.Source([<InlineIfLambda>] cancellableTask: CancellableTask<'T>) =
-            let task = cancellableTask Cancellation.token.Value in Started (fun () -> task |> AsyncHelpers.Await)
-
-        member inline _.Source([<InlineIfLambda>] coldTask: ColdValueTask<'T>) =
-            let task = coldTask () in Started (fun () -> task |> AsyncHelpers.Await)
-
-        member inline _.Source([<InlineIfLambda>] coldTask: ColdValueTask) =
-            let task = coldTask () in Started (fun () -> task |> AsyncHelpers.Await)
-
-        member inline _.Source([<InlineIfLambda>] cancellableTask: CancellableValueTask<'T>) =
-            let task = cancellableTask Cancellation.token.Value in Started (fun () -> task |> AsyncHelpers.Await)
-
-        member inline _.Source([<InlineIfLambda>] cancellableTask: CancellableValueTask) =
-            let task = cancellableTask Cancellation.token.Value in Started (fun () -> task |> AsyncHelpers.Await)
-
         // Accepted sources for For
         member inline _.Source(sequence: 'T seq) = sequence
         member inline _.Source(sequence: IAsyncEnumerable<'T>) = sequence
 
         // Cannonical runtime async Bind sources
-        member inline _.Source(task: Task<'T>) = Started (fun () -> task |> AsyncHelpers.Await)
-        member inline _.Source(task: Task) = Started (fun () -> task |> AsyncHelpers.Await)
-        member inline _.Source(task: ValueTask<'T>) = Started (fun () -> task |> AsyncHelpers.Await)
-        member inline _.Source(task: ValueTask) = Started (fun () -> task |> AsyncHelpers.Await)
+        member inline _.Source(task: Task<'T>) = Started (fun () -> Cancellation.check(); task |> AsyncHelpers.Await)
+        member inline _.Source(task: Task) = Started (fun () -> Cancellation.check(); task |> AsyncHelpers.Await)
+        member inline _.Source(task: ValueTask<'T>) = Started (fun () -> Cancellation.check(); task |> AsyncHelpers.Await)
+        member inline _.Source(task: ValueTask) = Started (fun () -> Cancellation.check(); task |> AsyncHelpers.Await)
 
-        member inline _.Source(computation: Async<'T>) =
-            let task = Async.StartImmediateAsTask(computation, Cancellation.token.Value)
-            Started( fun () -> task |> AsyncHelpers.Await)
+        // Cold start sources
+        member inline this.Source(computation: Async<'T>) =
+            this.Source(Async.StartImmediateAsTask(computation, Cancellation.token.Value))
+
+        member inline this.Source([<InlineIfLambda>] coldTask: ColdTask<'T>) = this.Source(coldTask())
+
+        member inline this.Source([<InlineIfLambda>] coldTask: ColdTask) = this.Source(coldTask())
+
+        member inline this.Source([<InlineIfLambda>] cancellableTask: CancellableTask) =
+            this.Source(cancellableTask Cancellation.token.Value)
+
+        member inline this.Source([<InlineIfLambda>] cancellableTask: CancellableTask<'T>) =
+            this.Source(cancellableTask Cancellation.token.Value)
+
+        member inline this.Source([<InlineIfLambda>] coldTask: ColdValueTask<'T>) =
+            this.Source(coldTask())
+
+        member inline this.Source([<InlineIfLambda>] coldTask: ColdValueTask) =
+            this.Source(coldTask())
+
+        member inline this.Source([<InlineIfLambda>] cancellableTask: CancellableValueTask<'T>) =
+            this.Source(cancellableTask Cancellation.token.Value)
+
+        member inline this.Source([<InlineIfLambda>] cancellableTask: CancellableValueTask) =
+            this.Source(cancellableTask Cancellation.token.Value)
