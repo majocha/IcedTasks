@@ -98,8 +98,7 @@ module ValueTasks =
                 Cancellation.setToken CancellationToken.None
                 code())
 
-        member inline _.Source(task : ValueTask<'T>) = task |> StartedAwaitable.ValueTask
-            
+        member inline _.Source(task: ValueTask<'T>) = Started( fun () -> AsyncHelpers.Await task)
 
     /// Contains the valueTask computation expression builder.
     [<AutoOpen>]

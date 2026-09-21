@@ -39,7 +39,8 @@ module CancellableTasks =
                 code())
 
         member inline _.Source(cancellableTask: CancellableTask<'T>) =
-            cancellableTask Cancellation.token.Value |> StartedAwaitable.Task
+            let task = cancellableTask Cancellation.token.Value
+            Started (fun () -> task |> AsyncHelpers.Await)
 
     /// Contains methods to build CancellableTasks using the F# computation expression syntax
     type BackgroundCancellableTaskBuilder() =
@@ -52,6 +53,10 @@ module CancellableTasks =
                     __runtimeAsyncReturn(
                     Cancellation.setToken ct
                     code()))
+
+        member inline _.Source(cancellableTask: CancellableTask<'T>) =
+            let task = cancellableTask Cancellation.token.Value
+            Started (fun () -> task |> AsyncHelpers.Await)
 
     /// Contains the cancellableTask computation expressions.
     [<AutoOpen>]

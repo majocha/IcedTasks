@@ -27,9 +27,9 @@ module CancellableValueTasks =
                 Cancellation.setToken ct           
                 code())
 
-        member inline _.Source(cancellableTask: CancellableValueTask<'T>) =
-            cancellableTask Cancellation.token.Value |> StartedAwaitable.ValueTask
-            
+        member inline _.Source([<InlineIfLambda>] cancellableTask: CancellableValueTask<'T>) =
+            let task = cancellableTask Cancellation.token.Value
+            Started (fun () -> task |> AsyncHelpers.Await)       
 
     /// Contains the cancellableValueTask computation expression builder.
     [<AutoOpen>]

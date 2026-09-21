@@ -21,6 +21,8 @@ module Tasks =
                 Cancellation.setToken CancellationToken.None
                 code())
 
+        member inline _.Source(task: Task<'T>) = Started(fun () -> AsyncHelpers.Await task)
+
     type BackgroundTaskBuilder() =
         inherit RuntimeAsyncBuilder()
 
@@ -32,12 +34,16 @@ module Tasks =
             else
                 Task.Run<'T>(run)
 
+        member inline _.Source(task: Task<'T>) = Started(fun () -> AsyncHelpers.Await task)
+
+
     type TaskUnitBuilder() =
         inherit RuntimeAsyncBuilder()
             member inline _.Run([<InlineIfLambda>] code) : Task =
                 __runtimeAsyncReturnUnit(
                     Cancellation.setToken CancellationToken.None
                     code())
+
 
     type BackgroundTaskUnitBuilder() =
         inherit RuntimeAsyncBuilder()
@@ -47,6 +53,9 @@ module Tasks =
                     code())
                 if isAlreadyBackground () then run ()
                 else Task.Run(run)
+
+            member inline _.Source(task: Task<'T>) = Started(fun () -> AsyncHelpers.Await task)
+
 
 /// Contains the task computation expression builder.
 [<AutoOpen>]
@@ -89,8 +98,6 @@ module ColdTasks =
                 Cancellation.setToken CancellationToken.None
                 code())
 
-        //member inline _.Source(coldTask: ColdTask<'T>) = coldTask ()
-
 
     /// Contains methods to build ColdTasks using the F# computation expression syntax
     type BackgroundColdTaskBuilder() =
@@ -101,8 +108,6 @@ module ColdTasks =
             fun () -> Task.Run<'T>(fun () -> __runtimeAsyncReturn(
                 Cancellation.setToken CancellationToken.None
                 code()))
-
-        //member inline _.Source(coldTask: ColdTask<'T>) = coldTask ()
 
 
     /// Contains the coldTasks computation expression builder.
@@ -256,38 +261,37 @@ open Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicOperators
 open Microsoft.FSharp.Collections
 open IcedTasks
 
-/// Contains the task computation expression builder.
-[<AutoOpen>]
-module TaskBuilder =
+///// Contains the task computation expression builder.
+//[<AutoOpen>]
+//module TaskBuilder =
 
-    type TaskBuilder() =
-        inherit RuntimeAsyncBuilder()
-        member inline _.Run([<InlineIfLambda>] code) : Task<'T> =
-            __runtimeAsyncReturn(code())
-
-        member inline _.Source(task: Task<'T>) = task |> StartedAwaitable.Task
-
-    type BackgroundTaskBuilder() =
-        inherit RuntimeAsyncBuilder()
-        member inline _.Run([<InlineIfLambda>] code) : Task<'T> =
-            if isAlreadyBackground () then
-                __runtimeAsyncReturn(code())
-            else
-                Task.Run<'T>(fun () -> __runtimeAsyncReturn(code()))
-
-        member inline _.Source(task: Task<'T>) = task |> StartedAwaitable.Task
+//    type TaskBuilder() =
+//        inherit RuntimeAsyncBuilder()
+//        member inline _.Run([<InlineIfLambda>] code) : Task<'T> =
+//            __runtimeAsyncReturn(code())
 
 
-    /// <summary>
-    /// Builds a task using computation expression syntax
-    ///
-    /// <b>NOTE:</b> This is the TaskBuilder defined in IcedTasks. This fixes any issues with the TaskBuilder defined in FSharp.Core that can't be backported.
-    /// </summary>
-    let task = TaskBuilder()
+//    type BackgroundTaskBuilder() =
+//        inherit RuntimeAsyncBuilder()
+//        member inline _.Run([<InlineIfLambda>] code) : Task<'T> =
+//            if isAlreadyBackground () then
+//                __runtimeAsyncReturn(code())
+//            else
+//                Task.Run<'T>(fun () -> __runtimeAsyncReturn(code()))
 
-    /// <summary>
-    /// Builds a task using computation expression syntax which switches to execute on a background thread if not already doing so.
-    ///
-    /// <b>NOTE:</b> This is the BackgroundTaskBuilder defined in IcedTasks. This fixes any issues with the BackgroundTaskBuilder defined in FSharp.Core that can't be backported.
-    /// </summary>
-    let backgroundTask = BackgroundTaskBuilder()
+//        member inline _.Source(task: Task<'T>) = Started(fun () -> AsyncHelpers.Await task)
+
+
+//    /// <summary>
+//    /// Builds a task using computation expression syntax
+//    ///
+//    /// <b>NOTE:</b> This is the TaskBuilder defined in IcedTasks. This fixes any issues with the TaskBuilder defined in FSharp.Core that can't be backported.
+//    /// </summary>
+//    let task = TaskBuilder()
+
+//    /// <summary>
+//    /// Builds a task using computation expression syntax which switches to execute on a background thread if not already doing so.
+//    ///
+//    /// <b>NOTE:</b> This is the BackgroundTaskBuilder defined in IcedTasks. This fixes any issues with the BackgroundTaskBuilder defined in FSharp.Core that can't be backported.
+//    /// </summary>
+//    let backgroundTask = BackgroundTaskBuilder()
