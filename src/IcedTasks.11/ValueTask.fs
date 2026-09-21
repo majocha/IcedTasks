@@ -94,7 +94,7 @@ module ValueTasks =
         inherit RuntimeAsyncBuilder()
 
         member inline this.Run([<InlineIfLambda>] code) : ValueTask<'T> =
-            __runtimeAsyncReturnValueTask(runImplNoCancellation code)
+            __runtimeAsyncReturnValueTask (code ())
 
         member inline _.Source(task: ValueTask<'T>) = base.Source(task)
 

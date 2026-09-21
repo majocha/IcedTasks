@@ -31,12 +31,13 @@ module CancellableTasks =
     /// Contains methods to build CancellableTasks using the F# computation expression syntax
     type CancellableTaskBuilder() =
 
-        inherit RuntimeAsyncBuilder()
+        inherit CancellableRuntimeAsyncBuilder()
 
         member inline this.Run([<InlineIfLambda>] code) : CancellableTask<'T> =
-            fun ct -> __runtimeAsyncReturn(runImpl code ct)
+            fun ct -> __runtimeAsyncReturn (code ct)
 
-        member inline this.Source(cancellableTask: CancellableTask<'T>) = base.Source(cancellableTask)
+        member inline this.Source(cancellableTask: CancellableTask<'T>) =
+            base.Source(cancellableTask)
 
     /// Contains methods to build CancellableTasks using the F# computation expression syntax
     type BackgroundCancellableTaskBuilder() =
@@ -45,11 +46,10 @@ module CancellableTasks =
 
         member inline this.Run([<InlineIfLambda>] code) : CancellableTask<'T> =
             fun ct ->
-                if isAlreadyBackground() then
-                    __runtimeAsyncReturn(runImpl code ct)
+                if isAlreadyBackground () then
+                    __runtimeAsyncReturn (code ct)
                 else
-                    Task.Run<'T>( fun () ->
-                        __runtimeAsyncReturn(runImpl code ct))
+                    Task.Run<'T>(fun () -> __runtimeAsyncReturn (code ct))
 
         member inline _.Source(cancellableTask: CancellableTask<'T>) = base.Source(cancellableTask)
 
@@ -65,17 +65,13 @@ module CancellableTasks =
 
         type AsyncEx with
 
-            static member inline AwaitCancellableTask
-                ([<InlineIfLambda>] t: CancellableTask<'T>)
-                =
+            static member inline AwaitCancellableTask([<InlineIfLambda>] t: CancellableTask<'T>) =
                 asyncEx {
                     let! ct = Async.CancellationToken
                     return! t ct
                 }
 
-            static member inline AwaitCancellableTask
-                ([<InlineIfLambda>] t: CancellableTask)
-                =
+            static member inline AwaitCancellableTask([<InlineIfLambda>] t: CancellableTask) =
                 asyncEx {
                     let! ct = Async.CancellationToken
                     return! t ct
@@ -83,25 +79,25 @@ module CancellableTasks =
 
         type Microsoft.FSharp.Control.Async with
 
-            static member inline AwaitCancellableTask
-                ([<InlineIfLambda>] t: CancellableTask<'T>)
-                =
+            static member inline AwaitCancellableTask([<InlineIfLambda>] t: CancellableTask<'T>) =
                 async {
                     let! ct = Async.CancellationToken
-                    return! t ct |> Async.AwaitTask
+
+                    return!
+                        t ct
+                        |> Async.AwaitTask
                 }
 
-            static member inline AwaitCancellableTask
-                ([<InlineIfLambda>] t: CancellableTask)
-                =
+            static member inline AwaitCancellableTask([<InlineIfLambda>] t: CancellableTask) =
                 async {
                     let! ct = Async.CancellationToken
-                    return! t ct |> Async.AwaitTask
+
+                    return!
+                        t ct
+                        |> Async.AwaitTask
                 }
 
-            static member inline AsCancellableTask
-                (computation: Async<'T>)
-                : CancellableTask<'T> =
+            static member inline AsCancellableTask(computation: Async<'T>) : CancellableTask<'T> =
                 fun ct -> Async.StartAsTask(computation, cancellationToken = ct)
 
     /// <summary>

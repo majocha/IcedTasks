@@ -13,7 +13,9 @@
     <ItemGroup>
         <Compile Include="AssemblyInfo.fs" />
         <Compile Include="TaskLike.fs" />
+        <Compile Include="RuntimeAsyncHelpers.fs" />
         <Compile Include="RuntimeAsyncBuilder.fs" />
+        <Compile Include="CancellableRuntimeAsyncBuilder.fs" />
         <Compile Include="ValueTask.fs" />
         <Compile Include="PoolingValueTask.fs" />
         <Compile Include="ValueTaskUnit.fs" />

@@ -16,8 +16,7 @@ module Tasks =
     type TaskBuilder() =
         inherit RuntimeAsyncBuilder()
 
-        member inline this.Run([<InlineIfLambda>] code) : Task<'T> =
-            __runtimeAsyncReturn(runImplNoCancellation code)    
+        member inline this.Run([<InlineIfLambda>] code) : Task<'T> = __runtimeAsyncReturn (code ())
 
         member inline this.Source(task: Task<'T>) = base.Source(task)
 
@@ -25,31 +24,29 @@ module Tasks =
         inherit RuntimeAsyncBuilder()
 
         member inline this.Run([<InlineIfLambda>] code) : Task<'T> =
-            if isAlreadyBackground() then
-                __runtimeAsyncReturn(runImplNoCancellation code)
+            if isAlreadyBackground () then
+                __runtimeAsyncReturn (code ())
             else
-                Task.Run<'T>(fun () ->
-                    __runtimeAsyncReturn(runImplNoCancellation code))
+                Task.Run<'T>(fun () -> __runtimeAsyncReturn (code ()))
 
         member inline this.Source(task: Task<'T>) = base.Source(task)
 
 
     type TaskUnitBuilder() =
         inherit RuntimeAsyncBuilder()
-            member inline this.Run([<InlineIfLambda>] code) : Task =
-                __runtimeAsyncReturnUnit(runImplNoCancellation code)
+        member inline this.Run([<InlineIfLambda>] code) : Task = __runtimeAsyncReturnUnit (code ())
 
 
     type BackgroundTaskUnitBuilder() =
         inherit RuntimeAsyncBuilder()
-            member inline this.Run([<InlineIfLambda>] code) : Task =
-                if isAlreadyBackground() then
-                    __runtimeAsyncReturn(runImplNoCancellation code)
-                else
-                    Task.Run<'T>( fun () ->
-                        __runtimeAsyncReturn(runImplNoCancellation code))
 
-            member inline this.Source(task: Task<'T>) = base.Source(task)
+        member inline this.Run([<InlineIfLambda>] code) : Task =
+            if isAlreadyBackground () then
+                __runtimeAsyncReturnUnit (code ())
+            else
+                Task.Run(fun () -> __runtimeAsyncReturnUnit (code ()))
+
+        member inline this.Source(task: Task<'T>) = base.Source(task)
 
 
 /// Contains the task computation expression builder.
@@ -89,7 +86,7 @@ module ColdTasks =
         inherit RuntimeAsyncBuilder()
 
         member inline this.Run([<InlineIfLambda>] code) : ColdTask<'T> =
-            fun () -> __runtimeAsyncReturn(runImplNoCancellation code)
+            fun () -> __runtimeAsyncReturn (code ())
 
     /// Contains methods to build ColdTasks using the F# computation expression syntax
     type BackgroundColdTaskBuilder() =
@@ -98,11 +95,10 @@ module ColdTasks =
 
         member inline this.Run([<InlineIfLambda>] code) : ColdTask<'T> =
             fun () ->
-                if isAlreadyBackground() then
-                    __runtimeAsyncReturn(runImplNoCancellation code)
+                if isAlreadyBackground () then
+                    __runtimeAsyncReturn (code ())
                 else
-                    Task.Run<'T>( fun () ->
-                        __runtimeAsyncReturn(runImplNoCancellation code))
+                    Task.Run<'T>(fun () -> __runtimeAsyncReturn (code ()))
 
 
     /// Contains the coldTasks computation expression builder.

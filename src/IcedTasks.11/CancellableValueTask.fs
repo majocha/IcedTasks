@@ -20,10 +20,10 @@ module CancellableValueTasks =
     /// Contains methods to build CancellableValueTasks using the F# computation expression syntax
     type CancellableValueTaskBuilder() =
 
-        inherit RuntimeAsyncBuilder()
+        inherit CancellableRuntimeAsyncBuilder()
 
         member inline this.Run([<InlineIfLambda>] code) : CancellableValueTask<'T> =
-            fun ct -> __runtimeAsyncReturnValueTask(runImpl code ct)
+            fun ct -> __runtimeAsyncReturnValueTask (code ct)
 
         member inline this.Source([<InlineIfLambda>] cancellableTask: CancellableValueTask<'T>) =
             base.Source(cancellableTask)
@@ -71,7 +71,10 @@ module CancellableValueTasks =
                 =
                 async {
                     let! ct = Async.CancellationToken
-                    return! t ct |> Async.AwaitValueTask
+
+                    return!
+                        t ct
+                        |> Async.AwaitValueTask
                 }
 
             static member inline AwaitCancellableValueTask
@@ -79,13 +82,18 @@ module CancellableValueTasks =
                 =
                 async {
                     let! ct = Async.CancellationToken
-                    return! t ct |> Async.AwaitValueTask
+
+                    return!
+                        t ct
+                        |> Async.AwaitValueTask
                 }
 
             static member inline AsCancellableValueTask
                 (computation: Async<'T>)
                 : CancellableValueTask<'T> =
-                fun ct -> Async.StartAsTask(computation, cancellationToken = ct) |> ValueTask<'T>
+                fun ct ->
+                    Async.StartAsTask(computation, cancellationToken = ct)
+                    |> ValueTask<'T>
 
 
     /// <summary>
