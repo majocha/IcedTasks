@@ -22,14 +22,11 @@ module CancellableValueTasks =
 
         inherit RuntimeAsyncBuilder()
 
-        member inline _.Run([<InlineIfLambda>] code) : CancellableValueTask<'T> =
-            fun ct -> __runtimeAsyncReturnValueTask(
-                Cancellation.setToken ct           
-                code())
+        member inline this.Run([<InlineIfLambda>] code) : CancellableValueTask<'T> =
+            fun ct -> __runtimeAsyncReturnValueTask(runImpl code ct)
 
-        member inline _.Source([<InlineIfLambda>] cancellableTask: CancellableValueTask<'T>) =
-            let task = cancellableTask Cancellation.token.Value
-            Started (fun () -> task |> AsyncHelpers.Await)       
+        member inline this.Source([<InlineIfLambda>] cancellableTask: CancellableValueTask<'T>) =
+            base.Source(cancellableTask)
 
     /// Contains the cancellableValueTask computation expression builder.
     [<AutoOpen>]

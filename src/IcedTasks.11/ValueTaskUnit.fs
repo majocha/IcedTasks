@@ -25,10 +25,8 @@ module ValueTasksUnit =
 
         inherit RuntimeAsyncBuilder()
 
-        member inline _.Run([<InlineIfLambda>] code) : ValueTask =
-            __runtimeAsyncReturnValueTaskUnit(
-                Cancellation.setToken CancellationToken.None
-                code())
+        member inline this.Run([<InlineIfLambda>] code) =
+            __runtimeAsyncReturnValueTaskUnit(runImplNoCancellation code)
 
     /// Contains the valueTaskUnit computation expression builder.
     [<AutoOpen>]

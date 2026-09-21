@@ -54,8 +54,7 @@ module AwaitableHelpers =
         let inline getAwaiter (awaitable: Awaitable<_, _, _>) =
             awaitable.GetAwaiter()
 
-[<AutoOpen>]
-module RuntimeAsyncBuilder =
+module RuntimeAsyncBuilderHelpers =
 
     [<RequireQualifiedAccess>]
     module Cancellation =
@@ -65,9 +64,6 @@ module RuntimeAsyncBuilder =
 
         let inline check() =
             token.Value.ThrowIfCancellationRequested()
-
-    let inline isAlreadyBackground () =
-        isNull SynchronizationContext.Current && obj.ReferenceEquals(TaskScheduler.Current, TaskScheduler.Default)
 
     type Started<'T> = delegate of unit -> 'T
 
@@ -79,6 +75,22 @@ module RuntimeAsyncBuilder =
             AsyncHelpers.UnsafeAwaitAwaiter awaiter
             Awaiter.getResult awaiter)
 
+
+
+open RuntimeAsyncBuilderHelpers
+
+[<AutoOpen>]
+module RuntimeAsyncBuilder =
+    let inline isAlreadyBackground () =
+        isNull SynchronizationContext.Current && obj.ReferenceEquals(TaskScheduler.Current, TaskScheduler.Default)
+
+    let inline runImpl([<InlineIfLambda>] body: unit -> 'T) ct =
+        Cancellation.setToken ct
+        body()
+
+    let inline runImplNoCancellation([<InlineIfLambda>] body: unit -> 'T) =
+        Cancellation.setToken CancellationToken.None
+        body()
 
 type RuntimeAsyncBuilder() =
 

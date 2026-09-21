@@ -33,30 +33,25 @@ module CancellableTasks =
 
         inherit RuntimeAsyncBuilder()
 
-        member inline _.Run([<InlineIfLambda>] code) : CancellableTask<'T> =
-            fun ct -> __runtimeAsyncReturn(
-                Cancellation.setToken ct
-                code())
+        member inline this.Run([<InlineIfLambda>] code) : CancellableTask<'T> =
+            fun ct -> __runtimeAsyncReturn(runImpl code ct)
 
-        member inline _.Source(cancellableTask: CancellableTask<'T>) =
-            let task = cancellableTask Cancellation.token.Value
-            Started (fun () -> task |> AsyncHelpers.Await)
+        member inline this.Source(cancellableTask: CancellableTask<'T>) = base.Source(cancellableTask)
 
     /// Contains methods to build CancellableTasks using the F# computation expression syntax
     type BackgroundCancellableTaskBuilder() =
 
         inherit RuntimeAsyncBuilder()
 
-        member inline _.Run([<InlineIfLambda>] code) : CancellableTask<'T> =
+        member inline this.Run([<InlineIfLambda>] code) : CancellableTask<'T> =
             fun ct ->
-                Task.Run<'T>( fun () ->
-                    __runtimeAsyncReturn(
-                    Cancellation.setToken ct
-                    code()))
+                if isAlreadyBackground() then
+                    __runtimeAsyncReturn(runImpl code ct)
+                else
+                    Task.Run<'T>( fun () ->
+                        __runtimeAsyncReturn(runImpl code ct))
 
-        member inline _.Source(cancellableTask: CancellableTask<'T>) =
-            let task = cancellableTask Cancellation.token.Value
-            Started (fun () -> task |> AsyncHelpers.Await)
+        member inline _.Source(cancellableTask: CancellableTask<'T>) = base.Source(cancellableTask)
 
     /// Contains the cancellableTask computation expressions.
     [<AutoOpen>]

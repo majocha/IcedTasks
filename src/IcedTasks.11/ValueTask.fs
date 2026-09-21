@@ -93,12 +93,10 @@ module ValueTasks =
 
         inherit RuntimeAsyncBuilder()
 
-        member inline _.Run([<InlineIfLambda>] code) : ValueTask<'T> =
-            __runtimeAsyncReturnValueTask(
-                Cancellation.setToken CancellationToken.None
-                code())
+        member inline this.Run([<InlineIfLambda>] code) : ValueTask<'T> =
+            __runtimeAsyncReturnValueTask(runImplNoCancellation code)
 
-        member inline _.Source(task: ValueTask<'T>) = Started( fun () -> AsyncHelpers.Await task)
+        member inline _.Source(task: ValueTask<'T>) = base.Source(task)
 
     /// Contains the valueTask computation expression builder.
     [<AutoOpen>]
