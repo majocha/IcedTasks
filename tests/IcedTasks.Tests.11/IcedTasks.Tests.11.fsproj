@@ -19,18 +19,18 @@
         </Reference>
     </ItemGroup>
     <ItemGroup>
-        <Compile Include="..\IcedTasks.Tests\Expect.fs" />
-        <Compile Include="..\IcedTasks.Tests\AsyncExTests.fs" />
-        <Compile Include="..\IcedTasks.Tests\TaskTests.fs" />
-        <Compile Include="..\IcedTasks.Tests\TaskBackgroundTests.fs" />
-        <Compile Include="..\IcedTasks.Tests\ValueTaskTests.fs" />
-        <Compile Include="..\IcedTasks.Tests\PoolingValueTaskTests.fs" />
-        <Compile Include="..\IcedTasks.Tests\CancellableTaskTests.fs" />
-        <Compile Include="..\IcedTasks.Tests\CancellableValueTaskTests.fs" />
-        <Compile Include="..\IcedTasks.Tests\CancellablePoolingValueTaskTests.fs" />
-        <Compile Include="..\IcedTasks.Tests\ColdTaskTests.fs" />
-        <Compile Include="..\IcedTasks.Tests\ParallelAsyncTests.fs" />
-        <Compile Include="..\IcedTasks.Tests\Main.fs" />
+        <Compile Include="Expect.fs" />
+        <Compile Include="AsyncExTests.fs" />
+        <Compile Include="TaskTests.fs" />
+        <Compile Include="TaskBackgroundTests.fs" />
+        <Compile Include="ValueTaskTests.fs" />
+        <Compile Include="PoolingValueTaskTests.fs" />
+        <Compile Include="CancellableTaskTests.fs" />
+        <Compile Include="CancellableValueTaskTests.fs" />
+        <Compile Include="CancellablePoolingValueTaskTests.fs" />
+        <Compile Include="ColdTaskTests.fs" />
+        <Compile Include="ParallelAsyncTests.fs" />
+        <Compile Include="Main.fs" />
     </ItemGroup>
 
 </Project>

@@ -22,10 +22,10 @@
     </PropertyGroup>
 
     <PropertyGroup Condition=" '$(MSBuildProjectExtension)' == '.fsproj'">
+      <RuntimeAsyncBitsPath Condition="'$(RuntimeAsyncBitsPath)' == ''">d:\source\fsharp\artifacts\bin</RuntimeAsyncBitsPath>
+      <DotnetFscCompilerPath>$(RuntimeAsyncBitsPath)\fsc\Release\net11.0\fsc.dll</DotnetFscCompilerPath>
+      <LangVersion>preview</LangVersion>
         <DisableImplicitFSharpCoreReference>True</DisableImplicitFSharpCoreReference>
-        <LangVersion>8.0</LangVersion>
-        <LangVersion Condition="'$(TargetFramework)' == 'net9.0'">9.0</LangVersion>
-        <Nullable Condition="'$(TargetFramework)' == 'net9.0'">enable</Nullable>
     </PropertyGroup>
     
     <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
@@ -35,4 +35,19 @@
         <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
         <EmbedUntrackedSources>true</EmbedUntrackedSources>
     </PropertyGroup>
+
+
+  <ItemGroup  Condition=" '$(MSBuildProjectExtension)' == '.fsproj'">
+    <!--
+      Runtime-async requires the FSharp.Core built from dotnet/fsharp PR #20235
+      (provides __runtimeAsyncReturn and friends). The compiler itself is selected
+      through DotnetFscCompilerPath in Directory.Build.props.
+    -->
+    <PackageReference Remove="FSharp.Core" />
+    <Reference Remove="FSharp.Core" />
+    <Reference Include="FSharp.Core">
+      <HintPath>$(RuntimeAsyncBitsPath)\FSharp.Core\Release\net10.0\FSharp.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
 </Project>

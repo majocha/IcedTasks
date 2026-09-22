@@ -1,7 +1,8 @@
-﻿namespace ILSpySamples
+namespace ILSpySamples
 
 open System.Threading.Tasks
 open System.Collections.Generic
+open IcedTasks
 
 
 module Task =

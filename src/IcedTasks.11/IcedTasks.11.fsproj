@@ -2,9 +2,6 @@
     <PropertyGroup>
         <TargetFramework>net11.0</TargetFramework>
         <NoWarn>$(NoWarn);FS3513</NoWarn>
-        <RuntimeAsyncBitsPath Condition="'$(RuntimeAsyncBitsPath)' == ''">d:\source\fsharp\artifacts\bin</RuntimeAsyncBitsPath>
-        <DotnetFscCompilerPath>$(RuntimeAsyncBitsPath)\fsc\Release\net11.0\fsc.dll</DotnetFscCompilerPath>
-        <LangVersion>preview</LangVersion>
     </PropertyGroup>
     <PropertyGroup>
         <Title>IcedTasks</Title>
