@@ -98,16 +98,13 @@ type CancellableRuntimeAsyncBuilder() =
                 compensation ()
 
     member inline _.Using
-        (resource, [<InlineIfLambda>] body: 'T -> CancellationToken -> 'U)
+        (resource: #IDisposable | null, [<InlineIfLambda>] body: 'T -> CancellationToken -> 'U)
         : CancellationToken -> 'U =
         fun ct ->
             try
                 body resource ct
             finally
-                match box resource with
-                | :? IAsyncDisposable as disposable -> AsyncHelpers.Await(disposable.DisposeAsync())
-                | :? IDisposable as disposable -> disposable.Dispose()
-                | _ -> ()
+                if not (isNull (box resource)) then resource.Dispose()
 
     member inline _.While
         (guard: unit -> bool, [<InlineIfLambda>] body: CancellationToken -> unit)
@@ -122,18 +119,6 @@ type CancellableRuntimeAsyncBuilder() =
         fun ct ->
             for item in sequence do
                 body item ct
-
-    member inline this.For
-        (sequence: IAsyncEnumerable<'T>, [<InlineIfLambda>] body: 'T -> CancellationToken -> unit)
-        : CancellationToken -> unit =
-        fun ct ->
-            this.Using
-                (sequence.GetAsyncEnumerator ct,
-                 fun enumerator ct ->
-                     while enumerator.MoveNextAsync()
-                           |> AsyncHelpers.Await do
-                         body enumerator.Current ct)
-                ct
 
     member inline _.Bind
         (
@@ -194,6 +179,30 @@ type CancellableRuntimeAsyncBuilder() =
             struct (left, right)
         )
 
+[<AutoOpen>]
+module CancellableRuntimeAsyncBuilderAsyncDisposableExtensions =
+    type CancellableRuntimeAsyncBuilder with
+        member inline _.Using
+            (resource: #IAsyncDisposable | null, [<InlineIfLambda>] body: 'T -> CancellationToken -> 'U)
+            : CancellationToken -> 'U =
+            fun ct ->
+                try
+                    body resource ct
+                finally
+                    if not (isNull (box resource)) then
+                        resource.DisposeAsync() |> AsyncHelpers.Await
+
+        member inline this.For
+            (sequence: IAsyncEnumerable<'T>, [<InlineIfLambda>] body: 'T -> CancellationToken -> unit)
+            : CancellationToken -> unit =
+            fun ct ->
+                this.Using
+                    (sequence.GetAsyncEnumerator ct,
+                     fun enumerator ct ->
+                         while enumerator.MoveNextAsync()
+                               |> AsyncHelpers.Await do
+                             body enumerator.Current ct)
+                    ct
 
 [<AutoOpen>]
 module CancellableRuntimeAsyncBuilderAwaitableExtensions =

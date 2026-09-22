@@ -1,14 +1,12 @@
 namespace IcedTasks
 
 open System
+open System.Collections.Generic
 open System.Runtime.CompilerServices
 open System.Threading
 open System.Threading.Tasks
-open System.Collections.Generic
-open Microsoft.FSharp.Core
+
 open Microsoft.FSharp.Core.CompilerServices
-open Microsoft.FSharp.Core.LanguagePrimitives.IntrinsicOperators
-open Microsoft.FSharp.Collections
 
 open AwaitableHelpers
 
@@ -20,7 +18,6 @@ module RuntimeAsyncBuilder =
         isNull SynchronizationContext.Current
         && obj.ReferenceEquals(TaskScheduler.Current, TaskScheduler.Default)
 
-    [<NoEagerConstraintApplication>]
     let inline startAwaitable awaitable =
         let awaiter = Awaitable.getAwaiter awaitable
 
@@ -61,14 +58,12 @@ type RuntimeAsyncBuilder() =
         finally
             compensation ()
 
-    member inline _.Using(resource, [<InlineIfLambda>] body) =
+    member inline _.Using(resource: #IDisposable | null, [<InlineIfLambda>] body) =
         try
             body resource
         finally
-            match box resource with
-            | :? IAsyncDisposable as disposable -> AsyncHelpers.Await(disposable.DisposeAsync())
-            | :? IDisposable as disposable -> disposable.Dispose()
-            | _ -> ()
+            if not (isNull (box resource)) then 
+                resource.Dispose()
 
     member inline _.While(guard: unit -> bool, [<InlineIfLambda>] body: unit -> unit) =
         while guard () do
@@ -77,15 +72,6 @@ type RuntimeAsyncBuilder() =
     member inline _.For(sequence: seq<'T>, [<InlineIfLambda>] body: 'T -> unit) =
         for item in sequence do
             body item
-
-    member inline this.For(sequence: IAsyncEnumerable<'T>, [<InlineIfLambda>] body: 'T -> unit) =
-        this.Using(
-            sequence.GetAsyncEnumerator(),
-            fun enumerator ->
-                while enumerator.MoveNextAsync()
-                      |> AsyncHelpers.Await do
-                    body enumerator.Current
-        )
 
     member inline _.Bind([<InlineIfLambda>] await: Started<'T>, [<InlineIfLambda>] continuation) =
         await.Invoke()
@@ -101,6 +87,25 @@ type RuntimeAsyncBuilder() =
             let right = right.Invoke()
             struct (left, right)
         )
+
+[<AutoOpen>]
+module RuntimeAsyncBuilderAsyncDisposableExtensions =
+    type RuntimeAsyncBuilder with
+        member inline _.Using(resource: #IAsyncDisposable | null, [<InlineIfLambda>] body) =
+            try
+                body resource
+            finally
+                if not (isNull (box resource)) then 
+                    resource.DisposeAsync() |> AsyncHelpers.Await
+
+        member inline this.For(sequence: IAsyncEnumerable<'T>, [<InlineIfLambda>] body: 'T -> unit) =
+            this.Using(
+                sequence.GetAsyncEnumerator(),
+                fun enumerator ->
+                    while enumerator.MoveNextAsync()
+                          |> AsyncHelpers.Await do
+                        body enumerator.Current
+            )
 
 [<AutoOpen>]
 module RuntimeAsyncBuilderAwaitableExtensions =
