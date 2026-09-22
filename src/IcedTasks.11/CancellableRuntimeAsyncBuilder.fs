@@ -22,7 +22,6 @@ module CancellableRuntimeAsyncBuilderHelpers =
     // and must be inlined unconditionally into async method body.
     type Cancellable<'T> = delegate of CancellationToken -> 'T
 
-    [<NoEagerConstraintApplication>]
     let inline startAwaitable awaitable =
         let awaiter = Awaitable.getAwaiter awaitable
 
@@ -31,7 +30,6 @@ module CancellableRuntimeAsyncBuilderHelpers =
             Awaiter.getResult awaiter
         )
 
-    [<NoEagerConstraintApplication>]
     let inline startCancellableAwaitable cancellableAwaitable =
         Cancellable(fun ct ->
             let awaiter =
