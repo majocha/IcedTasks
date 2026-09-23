@@ -22,7 +22,8 @@ module RuntimeAsyncBuilder =
         let awaiter = Awaitable.getAwaiter awaitable
 
         Started(fun () ->
-            AsyncHelpers.UnsafeAwaitAwaiter awaiter
+            if not (Awaiter.isCompleted awaiter) then
+                AsyncHelpers.UnsafeAwaitAwaiter awaiter
             Awaiter.getResult awaiter
         )
 
