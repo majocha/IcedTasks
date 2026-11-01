@@ -1238,7 +1238,10 @@ module ColdTaskTests =
                         (failAt site depth ()).GetAwaiter().GetResult()
                         |> ignore
                     with error ->
-                        trace.Value <- error.StackTrace
+                        trace.Value <-
+                            match error.StackTrace with
+                            | null -> ""
+                            | stackTrace -> stackTrace
                 ),
                 64
                 * 1024
